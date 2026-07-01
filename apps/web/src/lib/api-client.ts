@@ -66,7 +66,12 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { auth = true, ...rest } = init;
   const headers = new Headers(rest.headers);
-  headers.set('content-type', headers.get('content-type') ?? 'application/json');
+  // For multipart/FormData bodies, let the browser set Content-Type with its
+  // generated boundary. Otherwise default to JSON.
+  const isFormData = typeof FormData !== 'undefined' && rest.body instanceof FormData;
+  if (!isFormData && !headers.has('content-type')) {
+    headers.set('content-type', 'application/json');
+  }
 
   const attach = (tokens: AuthTokens | null) => {
     if (auth && tokens) headers.set('authorization', `Bearer ${tokens.accessToken}`);

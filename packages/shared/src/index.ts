@@ -3,4 +3,7 @@ export * from './permissions/codes';
 export * from './dto/auth.dto';
 export * from './dto/role.dto';
 export * from './dto/permission.dto';
+export * from './dto/tag.dto';
+export * from './dto/category.dto';
+export * from './dto/product.dto';
 export * from './catalog/variant-matrix';

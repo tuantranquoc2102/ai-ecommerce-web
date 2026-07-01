@@ -27,6 +27,13 @@ const EnvSchema = z.object({
 
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
+
+  S3_ENDPOINT: z.string().url(),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_BUCKET: z.string().min(1),
+  S3_ACCESS_KEY_ID: z.string().min(1),
+  S3_SECRET_ACCESS_KEY: z.string().min(1),
+  S3_PUBLIC_URL: z.string().url(),
 });
 
 export type AppEnv = z.infer<typeof EnvSchema>;
