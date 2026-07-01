@@ -1,0 +1,40 @@
+{
+  "name": "@ecom/db",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "prisma:generate": "dotenv -e ../../.env -- prisma generate",
+    "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "prisma:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "prisma:studio": "dotenv -e ../../.env -- prisma studio",
+    "prisma:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "prebuild": "pnpm prisma:generate",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -b",
+    "clean": "rimraf dist"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.20.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "@types/node": "^20.16.10",
+    "bcrypt": "^5.1.1",
+    "@types/bcrypt": "^5.0.2",
+    "dotenv-cli": "^7.4.2",
+    "rimraf": "^6.0.1"
+  }
+}

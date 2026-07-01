@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "target": "ES2022",
+    "noEmit": true,
+    "allowJs": false,
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "baseUrl": "./"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tailwind.preset.ts"],
+  "exclude": ["node_modules", "dist", ".next"]
+}

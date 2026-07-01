@@ -1,0 +1,34 @@
+export declare const PERM: {
+    readonly USER_READ: "user.read";
+    readonly USER_CREATE: "user.create";
+    readonly USER_UPDATE: "user.update";
+    readonly USER_DELETE: "user.delete";
+    readonly ROLE_READ: "role.read";
+    readonly ROLE_CREATE: "role.create";
+    readonly ROLE_UPDATE: "role.update";
+    readonly ROLE_DELETE: "role.delete";
+    readonly ROLE_ASSIGN_PERMISSIONS: "role.assign_permissions";
+    readonly ROLE_ASSIGN_USERS: "role.assign_users";
+    readonly PERMISSION_READ: "permission.read";
+    readonly PERMISSION_CREATE: "permission.create";
+    readonly PERMISSION_UPDATE: "permission.update";
+    readonly PERMISSION_DELETE: "permission.delete";
+    readonly PRODUCT_READ: "product.read";
+    readonly PRODUCT_CREATE: "product.create";
+    readonly PRODUCT_UPDATE: "product.update";
+    readonly PRODUCT_DELETE: "product.delete";
+    readonly CATEGORY_READ: "category.read";
+    readonly CATEGORY_WRITE: "category.write";
+    readonly PAGE_READ: "page.read";
+    readonly PAGE_WRITE: "page.write";
+    readonly BANNER_READ: "banner.read";
+    readonly BANNER_WRITE: "banner.write";
+    readonly MENU_WRITE: "menu.write";
+    readonly POST_READ: "post.read";
+    readonly POST_WRITE: "post.write";
+    readonly ORDER_READ: "order.read";
+    readonly ORDER_UPDATE: "order.update";
+    readonly ORDER_REFUND: "order.refund";
+};
+export type PermissionCode = (typeof PERM)[keyof typeof PERM];
+//# sourceMappingURL=codes.d.ts.map

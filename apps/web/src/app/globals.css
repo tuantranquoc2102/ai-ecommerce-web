@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@ecom/ui/styles/globals.css";
+
+/* Tell Tailwind v4 to scan the @ecom/ui package — it lives outside this app
+   but is transpiled in via next.config.ts's transpilePackages. */
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
