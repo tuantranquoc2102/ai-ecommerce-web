@@ -4,6 +4,7 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import fastifyHelmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
 import fastifyCookie from '@fastify/cookie';
+import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -25,6 +26,13 @@ async function bootstrap() {
   await app.register(fastifyCors, {
     origin: env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean),
     credentials: true,
+  });
+  await app.register(fastifyMultipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024,     // 5 MB — enforced again in MediaController
+      files: 1,                       // single file per request
+      fields: 5,                      // room for optional metadata fields
+    },
   });
 
   await app.listen({ port: env.API_PORT, host: '0.0.0.0' });

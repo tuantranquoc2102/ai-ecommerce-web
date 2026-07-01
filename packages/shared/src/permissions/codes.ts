@@ -28,6 +28,9 @@ export const PERM = {
   CATEGORY_READ: 'category.read',
   CATEGORY_WRITE: 'category.write',
 
+  TAG_READ: 'tag.read',
+  TAG_WRITE: 'tag.write',
+
   PAGE_READ: 'page.read',
   PAGE_WRITE: 'page.write',
   BANNER_READ: 'banner.read',

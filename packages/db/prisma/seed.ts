@@ -48,6 +48,9 @@ const PERMISSIONS: PermSeed[] = [
   { code: 'category.read', name: 'List/view categories', type: 'API', apiEndpoint: 'GET /api/v1/categories' },
   { code: 'category.write', name: 'Manage categories', type: 'API', apiEndpoint: 'POST /api/v1/categories' },
 
+  { code: 'tag.read', name: 'List/view tags', type: 'API', apiEndpoint: 'GET /api/v1/tags' },
+  { code: 'tag.write', name: 'Manage tags', type: 'API', apiEndpoint: 'POST /api/v1/tags' },
+
   // API: CMS
   { code: 'page.read', name: 'List/view pages', type: 'API', apiEndpoint: 'GET /api/v1/pages' },
   { code: 'page.write', name: 'Manage pages', type: 'API', apiEndpoint: 'POST /api/v1/pages' },

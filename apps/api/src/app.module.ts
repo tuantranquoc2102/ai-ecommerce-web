@@ -10,6 +10,10 @@ import { AuthzModule } from './modules/authz/authz.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { ResourcesModule } from './modules/resources/resources.module';
 import { UsersModule } from './modules/users/users.module';
+import { TagsModule } from './modules/tags/tags.module';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { ProductsModule } from './modules/products/products.module';
+import { MediaModule } from './modules/media/media.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './modules/authz/permissions.guard';
 
@@ -25,6 +29,10 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
     UsersModule,
     RolesModule,
     ResourcesModule,
+    TagsModule,
+    CategoriesModule,
+    ProductsModule,
+    MediaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

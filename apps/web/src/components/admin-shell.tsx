@@ -6,11 +6,13 @@ import type { Route } from 'next';
 import {
   Box,
   ChevronDown,
+  FolderTree,
   LayoutDashboard,
   LogOut,
   Menu,
   Settings,
   ShoppingBag,
+  Tag,
   Users,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
@@ -40,6 +42,8 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="size-4" /> },
   { href: '/admin/products', label: 'Products', icon: <Box className="size-4" /> },
+  { href: '/admin/categories', label: 'Categories', icon: <FolderTree className="size-4" /> },
+  { href: '/admin/tags', label: 'Tags', icon: <Tag className="size-4" /> },
   { href: '/admin/orders', label: 'Orders', icon: <ShoppingBag className="size-4" /> },
   { href: '/admin/users', label: 'Users', icon: <Users className="size-4" /> },
   { href: '/admin/settings', label: 'Settings', icon: <Settings className="size-4" /> },
