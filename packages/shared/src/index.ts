@@ -7,4 +7,5 @@ export * from './dto/user.dto';
 export * from './dto/tag.dto';
 export * from './dto/category.dto';
 export * from './dto/product.dto';
+export * from './dto/cms.dto';
 export * from './catalog/variant-matrix';

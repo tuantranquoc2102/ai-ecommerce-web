@@ -1,7 +1,32 @@
 import { PrismaClient, PermissionType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import Redis from 'ioredis';
 
 const prisma = new PrismaClient();
+
+/**
+ * Force the authz cache to flush by bumping the shared version key. The API's
+ * PermissionsService keys each per-user entry with this version, so INCR is
+ * equivalent to `DEL cache:permissions:*` but O(1). Seed can't call the
+ * NestJS service directly, so we talk to Redis over the wire.
+ */
+async function bumpAuthzCache() {
+  const url = process.env.REDIS_URL;
+  if (!url) {
+    console.warn('REDIS_URL not set — skipping authz cache bump. Restart the API to pick up new permissions.');
+    return;
+  }
+  const redis = new Redis(url, { maxRetriesPerRequest: 1, lazyConnect: true });
+  try {
+    await redis.connect();
+    const v = await redis.incr('cache:permissions:version');
+    console.log(`Authz cache version bumped to ${v}. Active sessions will see new permissions on next request.`);
+  } catch (e) {
+    console.warn(`Could not bump authz cache: ${(e as Error).message}. Restart the API to pick up new permissions.`);
+  } finally {
+    redis.disconnect();
+  }
+}
 
 type PermSeed = {
   code: string;
@@ -56,6 +81,7 @@ const PERMISSIONS: PermSeed[] = [
   { code: 'page.write', name: 'Manage pages', type: 'API', apiEndpoint: 'POST /api/v1/pages' },
   { code: 'banner.read', name: 'List banners', type: 'API', apiEndpoint: 'GET /api/v1/banners' },
   { code: 'banner.write', name: 'Manage banners', type: 'API', apiEndpoint: 'POST /api/v1/banners' },
+  { code: 'menu.read', name: 'List navigation menus', type: 'API', apiEndpoint: 'GET /api/v1/menus' },
   { code: 'menu.write', name: 'Manage navigation menus', type: 'API', apiEndpoint: 'POST /api/v1/menus' },
   { code: 'post.read', name: 'List posts', type: 'API', apiEndpoint: 'GET /api/v1/posts' },
   { code: 'post.write', name: 'Manage blog posts', type: 'API', apiEndpoint: 'POST /api/v1/posts' },
@@ -184,6 +210,8 @@ async function main() {
 
   console.log(`Seeded ${PERMISSIONS.length} permissions, ${ROLES.length} roles.`);
   console.log(`Super admin: ${adminEmail} / ${adminPassword}  <-- change after first login`);
+
+  await bumpAuthzCache();
 }
 
 main()

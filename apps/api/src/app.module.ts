@@ -14,6 +14,9 @@ import { TagsModule } from './modules/tags/tags.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { ProductsModule } from './modules/products/products.module';
 import { MediaModule } from './modules/media/media.module';
+import { PagesModule } from './modules/pages/pages.module';
+import { MenusModule } from './modules/menus/menus.module';
+import { BannersModule } from './modules/banners/banners.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './modules/authz/permissions.guard';
 
@@ -33,6 +36,9 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
     CategoriesModule,
     ProductsModule,
     MediaModule,
+    PagesModule,
+    MenusModule,
+    BannersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
