@@ -7,10 +7,12 @@ import {
   Box,
   ChevronDown,
   FolderTree,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
   Settings,
+  ShieldCheck,
   ShoppingBag,
   Tag,
   Users,
@@ -46,6 +48,8 @@ const NAV: NavItem[] = [
   { href: '/admin/tags', label: 'Tags', icon: <Tag className="size-4" /> },
   { href: '/admin/orders', label: 'Orders', icon: <ShoppingBag className="size-4" /> },
   { href: '/admin/users', label: 'Users', icon: <Users className="size-4" /> },
+  { href: '/admin/roles', label: 'Roles', icon: <ShieldCheck className="size-4" /> },
+  { href: '/admin/resources', label: 'Permissions', icon: <KeyRound className="size-4" /> },
   { href: '/admin/settings', label: 'Settings', icon: <Settings className="size-4" /> },
 ];
 
