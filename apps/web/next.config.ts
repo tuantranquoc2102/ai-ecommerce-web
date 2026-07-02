@@ -2,7 +2,10 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  typedRoutes: true,
+  // typedRoutes is intentionally OFF: storefront links come from user-authored
+  // CMS content (menu items, banner target URLs) where the target isn't known
+  // to the type system. Admin-side routes still use `Route` casts as hints.
+  typedRoutes: false,
   transpilePackages: ['@ecom/shared', '@ecom/ui'],
   images: {
     // Allow local MinIO. Add production S3/CDN hostnames here when deploying.

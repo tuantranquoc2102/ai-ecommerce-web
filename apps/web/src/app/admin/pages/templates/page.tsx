@@ -42,18 +42,24 @@ interface BlockTemplate {
 const TEMPLATES: BlockTemplate[] = [
   {
     type: 'HeroBanner',
-    title: 'Hero Banner',
+    title: 'Hero Banner — with headline + CTA',
     description:
-      'Single large image at the top of a page. Pulls one active banner from the given position slot; deactivates automatically per schedule.',
+      'Full-bleed image with overlay headline, sub-headline, and a primary CTA button. Answers the 3 first-screen questions in one shot: what is this, what do I get, what to do next.',
     when: 'Homepage hero, landing page top, campaign page opener.',
-    badges: ['banners', 'single-image'],
+    badges: ['banners', 'headline', 'CTA', 'above-the-fold'],
     json: {
       id: 'hero-1',
       type: 'HeroBanner',
       props: {
         bannerPosition: 'home_hero',
-        aspect: 'wide', // wide | square | tall
-        overlay: true, // dim + text overlay
+        headline: 'Summer collection is here',
+        subHeadline: 'Free shipping over $50 + easy 30-day returns.',
+        ctaLabel: 'Shop the drop',
+        ctaHref: '/products',
+        secondaryCtaLabel: 'Browse categories',
+        secondaryCtaHref: '/products',
+        align: 'center', // 'center' | 'left'
+        aspect: 'wide',  // 'wide' | 'square' | 'tall'
       },
     },
   },
@@ -253,6 +259,118 @@ const TEMPLATES: BlockTemplate[] = [
       },
     },
   },
+  {
+    type: 'TrustBadges',
+    title: 'Trust Badges',
+    description:
+      'Row of reassurance items (free shipping, secure checkout, easy returns) that inoculate visitors against friction. Place immediately under the hero.',
+    when: 'Below hero on every landing page. Reduces cart abandonment.',
+    badges: ['trust', 'conversion', 'social-proof'],
+    json: {
+      id: 'trust-strip',
+      type: 'TrustBadges',
+      props: {
+        variant: 'strip', // 'strip' | 'grid'
+        items: [
+          { icon: 'Truck', title: 'Free shipping', subtitle: 'Orders over $50' },
+          { icon: 'ShieldCheck', title: 'Secure checkout', subtitle: 'PCI-DSS compliant' },
+          { icon: 'RefreshCcw', title: 'Easy returns', subtitle: '30-day money back' },
+          { icon: 'Headphones', title: '24/7 support', subtitle: 'We reply in 2h' },
+        ],
+      },
+    },
+  },
+  {
+    type: 'Testimonials',
+    title: 'Testimonials / UGC',
+    description:
+      'Customer quotes with optional photos (user-generated content — the highest-converting social proof for e-commerce). Ideally 3-6 real reviews with real customer photos.',
+    when: 'Between product showcase and final CTA. Answers "does this actually work for people like me?".',
+    badges: ['social-proof', 'UGC', 'conversion'],
+    json: {
+      id: 'testimonials-1',
+      type: 'Testimonials',
+      props: {
+        title: 'Loved by 2,000+ shoppers',
+        subtitle: 'Real reviews from real customers.',
+        items: [
+          {
+            name: 'Minh N.',
+            location: 'Ho Chi Minh City',
+            rating: 5,
+            quote: 'Delivery was crazy fast and packaging was on point. Ordered again the next week.',
+            photoUrl: 'http://localhost:9000/ecom/pages/ugc-1.jpg',
+          },
+          {
+            name: 'Lan T.',
+            location: 'Hanoi',
+            rating: 5,
+            quote: 'Quality exceeded my expectations for the price. The size guide is accurate too.',
+          },
+          {
+            name: 'Duc P.',
+            location: 'Da Nang',
+            rating: 4,
+            quote: 'Great value. Only tiny nit is I wish more colors were in stock.',
+            photoUrl: 'http://localhost:9000/ecom/pages/ugc-2.jpg',
+          },
+        ],
+      },
+    },
+  },
+  {
+    type: 'FAQ',
+    title: 'FAQ (Accordion)',
+    description:
+      'Pre-empts last-mile objections about shipping, sizing, warranty, returns. Uses native <details> — no JS, no bundle cost, works before hydration.',
+    when: 'Near the bottom of landing pages and product-detail pages. Reduces support tickets.',
+    badges: ['content', 'objection-handling'],
+    json: {
+      id: 'faq-1',
+      type: 'FAQ',
+      props: {
+        title: 'Frequently asked questions',
+        subtitle: 'Still curious? Our support team replies within 2 hours.',
+        items: [
+          {
+            question: 'How long does shipping take?',
+            answer: 'Standard: 2-4 business days in Vietnam. Express next-day is available at checkout for major cities.',
+          },
+          {
+            question: 'What is your return policy?',
+            answer: '30-day money-back guarantee. Item must be unused with original tags. Return shipping is on us if the item is defective.',
+          },
+          {
+            question: 'Is my payment secure?',
+            answer: 'Yes. All transactions go through PCI-DSS compliant payment gateways (MoMo, VNPAY, VISA/Mastercard). We never see your card number.',
+          },
+          {
+            question: 'Do you ship internationally?',
+            answer: 'Not yet. We currently ship within Vietnam. Sign up for the newsletter to be notified when international shipping launches.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    type: 'Newsletter',
+    title: 'Newsletter signup',
+    description:
+      'Lead capture in exchange for a discount code. Sits well as either a landing-page block OR permanently in the footer (the footer already includes it — this block is for landing-page prominence).',
+    when: 'Bottom of landing page, before FAQ. Also good as a mid-scroll interrupt on long product pages.',
+    badges: ['conversion', 'lead-capture'],
+    json: {
+      id: 'newsletter-1',
+      type: 'Newsletter',
+      props: {
+        title: 'Get 10% off your first order',
+        subtitle: "Join 5,000+ subscribers for early access to sales and new drops.",
+        discountLabel: '-10% OFF',
+        discountCode: 'WELCOME10',
+        layout: 'boxed', // 'boxed' | 'inline'
+      },
+    },
+  },
 ];
 
 const FULL_PAGE_EXAMPLE = {
@@ -260,7 +378,28 @@ const FULL_PAGE_EXAMPLE = {
     {
       id: 'hero-1',
       type: 'HeroBanner',
-      props: { bannerPosition: 'home_hero', aspect: 'wide', overlay: true },
+      props: {
+        bannerPosition: 'home_hero',
+        headline: 'Summer collection is here',
+        subHeadline: 'Free shipping over $50 + easy 30-day returns.',
+        ctaLabel: 'Shop the drop',
+        ctaHref: '/products',
+        align: 'center',
+        aspect: 'wide',
+      },
+    },
+    {
+      id: 'trust',
+      type: 'TrustBadges',
+      props: {
+        variant: 'strip',
+        items: [
+          { icon: 'Truck', title: 'Free shipping', subtitle: 'Orders over $50' },
+          { icon: 'ShieldCheck', title: 'Secure checkout', subtitle: 'PCI-DSS compliant' },
+          { icon: 'RefreshCcw', title: 'Easy returns', subtitle: '30-day money back' },
+          { icon: 'Headphones', title: '24/7 support', subtitle: 'We reply in 2h' },
+        ],
+      },
     },
     {
       id: 'categories',
@@ -268,24 +407,27 @@ const FULL_PAGE_EXAMPLE = {
       props: { parentId: null, limit: 6, layout: 'grid', showImage: true },
     },
     {
-      id: 'divider-1',
-      type: 'Divider',
-      props: { label: 'Featured products', thickness: 'thin' },
-    },
-    {
       id: 'grid-featured',
       type: 'ProductGrid',
-      props: { source: 'tag', tagId: 'REPLACE_WITH_TAG_ID', limit: 8, columns: 4 },
+      props: {
+        source: 'tag',
+        tagId: 'REPLACE_WITH_TAG_ID',
+        limit: 8,
+        columns: 4,
+        title: 'Featured products',
+        subtitle: 'Hand-picked by our team.',
+        cardBadge: 'Featured',
+      },
     },
     {
-      id: 'features',
-      type: 'TextColumns',
+      id: 'testimonials',
+      type: 'Testimonials',
       props: {
-        columns: 3,
+        title: 'Loved by 2,000+ shoppers',
         items: [
-          { icon: 'Truck', heading: 'Fast delivery', body: 'Ships in 24h nationwide.' },
-          { icon: 'ShieldCheck', heading: 'Secure checkout', body: 'PCI-compliant payments.' },
-          { icon: 'RefreshCcw', heading: 'Easy returns', body: '30-day money-back.' },
+          { name: 'Minh N.', rating: 5, quote: 'Delivery was fast and packaging was on point.' },
+          { name: 'Lan T.', rating: 5, quote: 'Quality exceeded expectations for the price.' },
+          { name: 'Duc P.', rating: 4, quote: 'Great value. Wish more colors were in stock.' },
         ],
       },
     },
@@ -300,32 +442,49 @@ const FULL_PAGE_EXAMPLE = {
       },
     },
     {
-      id: 'cta',
-      type: 'CTAButton',
+      id: 'newsletter',
+      type: 'Newsletter',
       props: {
-        label: 'Shop all products',
-        href: '/products',
-        variant: 'default',
-        size: 'lg',
+        title: 'Get 10% off your first order',
+        subtitle: 'Join 5,000+ subscribers for early access to sales.',
+        discountLabel: '-10% OFF',
+        discountCode: 'WELCOME10',
+        layout: 'boxed',
+      },
+    },
+    {
+      id: 'faq',
+      type: 'FAQ',
+      props: {
+        title: 'Frequently asked questions',
+        items: [
+          { question: 'How long does shipping take?', answer: 'Standard: 2-4 business days. Express next-day available at checkout.' },
+          { question: 'What is your return policy?', answer: '30-day money-back guarantee. Return shipping on us if item is defective.' },
+          { question: 'Is my payment secure?', answer: 'Yes — PCI-DSS compliant gateways (MoMo, VNPAY, VISA/MC). We never see your card.' },
+        ],
       },
     },
   ],
 };
 
-const CATEGORIES = ['Media', 'Catalog', 'Content', 'Layout'] as const;
+const CATEGORIES = ['Media', 'Catalog', 'Content', 'Layout', 'Trust', 'Conversion'] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const CATEGORY_MAP: Record<string, Category> = {
   HeroBanner: 'Media',
   BannerSlider: 'Media',
+  ImageBlock: 'Media',
   ProductGrid: 'Catalog',
   FlashSaleCountdown: 'Catalog',
   CategoryList: 'Catalog',
   RichText: 'Content',
-  ImageBlock: 'Content',
-  CTAButton: 'Content',
-  TextColumns: 'Layout',
+  TextColumns: 'Content',
   Divider: 'Layout',
+  CTAButton: 'Conversion',
+  Newsletter: 'Conversion',
+  TrustBadges: 'Trust',
+  Testimonials: 'Trust',
+  FAQ: 'Trust',
 };
 
 export default function TemplatesPage() {

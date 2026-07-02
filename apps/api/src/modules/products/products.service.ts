@@ -69,6 +69,24 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * Public storefront lookup — 404 for anything not ACTIVE so drafts and
+   * archived products stay invisible to anonymous visitors.
+   */
+  async findPublicBySlug(slug: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { slug, deletedAt: null, status: 'ACTIVE' },
+      include: {
+        productCategories: { include: { category: true } },
+        productTags: { include: { tag: true } },
+      },
+    });
+    if (!product) {
+      throw new NotFoundException({ code: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
+    }
+    return product;
+  }
+
   async create(input: CreateProductDto) {
     if (input.type === 'DIGITAL' && !input.digitalType) {
       throw new BadRequestException({

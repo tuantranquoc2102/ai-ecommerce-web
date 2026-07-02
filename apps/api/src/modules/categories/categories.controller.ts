@@ -16,6 +16,7 @@ import {
   PERM,
   UpdateCategoryDto,
 } from '@ecom/shared';
+import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CategoriesService } from './categories.service';
@@ -33,6 +34,13 @@ export class CategoriesController {
   @RequirePermission(PERM.CATEGORY_READ)
   @Get('tree')
   tree() {
+    return this.categories.tree();
+  }
+
+  /** Public tree for storefront navigation. */
+  @Public()
+  @Get('public/tree')
+  publicTree() {
     return this.categories.tree();
   }
 
