@@ -57,6 +57,25 @@ export class ProductsController {
     return this.products.list({ ...query, status: 'ACTIVE' });
   }
 
+  /**
+   * Public batch lookup by product ids — for ProductGrid `source=manual` and
+   * FlashSaleCountdown blocks that reference explicit product IDs. Only ACTIVE
+   * non-deleted products are returned; the caller can preserve order client-side.
+   *
+   * Query format: `?ids=id1,id2,id3` (capped at 50 ids).
+   */
+  @Public()
+  @Get('public/by-ids')
+  publicByIds(@Query('ids') idsRaw?: string) {
+    const ids = (idsRaw ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 50);
+    if (ids.length === 0) return [];
+    return this.products.findManyPublicByIds(ids);
+  }
+
   @RequirePermission(PERM.PRODUCT_CREATE)
   @Post()
   create(@Body(new ZodValidationPipe(CreateProductDto)) body: CreateProductDto) {

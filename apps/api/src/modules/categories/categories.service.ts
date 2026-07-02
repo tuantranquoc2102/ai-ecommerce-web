@@ -80,6 +80,28 @@ export class CategoriesService {
     return category;
   }
 
+  /**
+   * Public storefront lookup: single category by slug, plus its immediate
+   * children so the /c/[slug] page can render subcategory tiles.
+   */
+  async findPublicBySlug(slug: string) {
+    const category = await this.prisma.category.findUnique({
+      where: { slug },
+      include: {
+        _count: { select: { productCategories: true, children: true } },
+        children: {
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+          include: { _count: { select: { productCategories: true } } },
+        },
+        parent: { select: { id: true, name: true, slug: true } },
+      },
+    });
+    if (!category) {
+      throw new NotFoundException({ code: 'CATEGORY_NOT_FOUND', message: 'Category not found' });
+    }
+    return category;
+  }
+
   async create(input: CreateCategoryDto) {
     const slug = input.slug ?? toSlug(input.name);
     const exists = await this.prisma.category.findFirst({ where: { slug } });

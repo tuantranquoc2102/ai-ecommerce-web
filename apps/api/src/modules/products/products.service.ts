@@ -70,6 +70,25 @@ export class ProductsService {
   }
 
   /**
+   * Public storefront batch — returns ACTIVE, non-deleted products whose IDs
+   * match. Duplicate IDs are de-duped by Prisma; caller preserves order.
+   */
+  async findManyPublicByIds(ids: string[]) {
+    if (ids.length === 0) return [];
+    return this.prisma.product.findMany({
+      where: {
+        id: { in: ids },
+        deletedAt: null,
+        status: 'ACTIVE',
+      },
+      include: {
+        productCategories: { include: { category: true } },
+        productTags: { include: { tag: true } },
+      },
+    });
+  }
+
+  /**
    * Public storefront lookup — 404 for anything not ACTIVE so drafts and
    * archived products stay invisible to anonymous visitors.
    */

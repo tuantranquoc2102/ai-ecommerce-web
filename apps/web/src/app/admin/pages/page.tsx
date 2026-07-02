@@ -49,6 +49,9 @@ import {
   useToast,
 } from '@ecom/ui';
 import { ApiError, apiFetch } from '@/lib/api-client';
+import { revalidateStorefront } from '@/lib/revalidate';
+import { PageCanvas, type PageBlock } from '@/components/cms/page-canvas';
+import { ExternalLink } from 'lucide-react';
 
 type Page = {
   id: string;
@@ -70,12 +73,31 @@ const STATUS_VARIANT: Record<PageStatus, 'secondary' | 'success' | 'warning'> = 
   SCHEDULED: 'warning',
 };
 
-const LAYOUT_JSON_HINT = `{
-  "blocks": [
-    { "id": "hero-1", "type": "HeroBanner", "props": { "bannerPosition": "home_hero" } },
-    { "id": "featured", "type": "ProductGrid", "props": { "categoryId": "…", "limit": 8 } }
-  ]
-}`;
+/** Coerce whatever shape the API returned into a PageBlock[] the canvas expects. */
+function extractBlocks(layoutJson: unknown): PageBlock[] {
+  if (!layoutJson || typeof layoutJson !== 'object') return [];
+  const raw = (layoutJson as { blocks?: unknown }).blocks;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((b, i) => {
+      if (!b || typeof b !== 'object') return null;
+      const obj = b as Record<string, unknown>;
+      const type = typeof obj.type === 'string' ? obj.type : null;
+      if (!type) return null;
+      const templateId = typeof obj.templateId === 'string' ? obj.templateId : undefined;
+      const templateName = typeof obj.templateName === 'string' ? obj.templateName : undefined;
+      return {
+        id: typeof obj.id === 'string' && obj.id ? obj.id : `b_${i}`,
+        type,
+        props: (obj.props && typeof obj.props === 'object'
+          ? (obj.props as Record<string, unknown>)
+          : {}) as Record<string, unknown>,
+        ...(templateId ? { templateId } : {}),
+        ...(templateName ? { templateName } : {}),
+      } satisfies PageBlock;
+    })
+    .filter((b): b is PageBlock => b !== null);
+}
 
 export default function PagesPage() {
   const { toast } = useToast();
@@ -292,15 +314,11 @@ function PageFormSheet({
     },
   });
 
-  const [layoutText, setLayoutText] = useState('{"blocks":[]}');
-  const [layoutErr, setLayoutErr] = useState<string | null>(null);
+  const [blocks, setBlocks] = useState<PageBlock[]>([]);
 
   useEffect(() => {
     if (!open) return;
-    const layoutInitial = initial?.layoutJson ?? { blocks: [] };
-    const layoutStr = JSON.stringify(layoutInitial, null, 2);
-    setLayoutText(layoutStr);
-    setLayoutErr(null);
+    setBlocks(extractBlocks(initial?.layoutJson));
     if (initial) {
       updateForm.reset({
         title: initial.title,
@@ -323,25 +341,10 @@ function PageFormSheet({
     }
   }, [open, initial, createForm, updateForm]);
 
-  function parseLayout(): unknown | null {
-    try {
-      const parsed = JSON.parse(layoutText || 'null');
-      setLayoutErr(null);
-      return parsed;
-    } catch (e) {
-      setLayoutErr((e as Error).message);
-      return null;
-    }
-  }
-
   async function submit() {
-    const layout = parseLayout();
-    if (layoutErr) return;
-
     const isEditMode = !!initial;
     const values = isEditMode ? updateForm.getValues() : createForm.getValues();
 
-    // Trigger validation once through the appropriate form.
     const ok = isEditMode
       ? await updateForm.trigger()
       : await createForm.trigger();
@@ -350,7 +353,7 @@ function PageFormSheet({
     const body: Record<string, unknown> = {
       title: values.title,
       status: values.status,
-      layoutJson: layout,
+      layoutJson: { blocks },
     };
     if (values.slug) body.slug = values.slug;
     if (values.seoTitle !== undefined) body.seoTitle = values.seoTitle;
@@ -367,6 +370,9 @@ function PageFormSheet({
         await apiFetch('/pages', { method: 'POST', body: JSON.stringify(body) });
         toast({ title: 'Page created', variant: 'success' });
       }
+      // Invalidate storefront caches so the change appears immediately.
+      const slug = values.slug ?? initial?.slug;
+      await revalidateStorefront(['pages', slug ? `page:${slug}` : ''].filter(Boolean));
       onSaved();
     } catch (e) {
       toast({
@@ -450,36 +456,34 @@ function PageFormSheet({
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Layout JSON</label>
-                <Link
-                  href="/admin/pages/templates"
-                  target="_blank"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <LayoutTemplate className="size-3" />
-                  Browse templates
-                </Link>
+                <label className="text-sm font-medium">Page blocks</label>
+                <div className="flex items-center gap-3">
+                  {initial ? (
+                    <a
+                      href={
+                        initial.status === 'PUBLISHED'
+                          ? `/${initial.slug}`
+                          : `/${initial.slug}?preview=1`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <ExternalLink className="size-3" />
+                      Open preview
+                    </a>
+                  ) : null}
+                  <Link
+                    href="/admin/block-templates"
+                    target="_blank"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <LayoutTemplate className="size-3" />
+                    Manage templates
+                  </Link>
+                </div>
               </div>
-              <Textarea
-                rows={10}
-                spellCheck={false}
-                value={layoutText}
-                onChange={(e) => {
-                  setLayoutText(e.target.value);
-                  setLayoutErr(null);
-                }}
-                onBlur={parseLayout}
-                className="font-mono text-xs"
-              />
-              {layoutErr ? (
-                <p className="text-xs font-medium text-destructive">
-                  Invalid JSON: {layoutErr}
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Example: <code className="rounded bg-muted px-1">{LAYOUT_JSON_HINT.split('\n')[1]?.trim()}</code>
-                </p>
-              )}
+              <PageCanvas value={blocks} onChange={setBlocks} />
             </div>
 
             <FormField

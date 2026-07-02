@@ -79,6 +79,8 @@ const PERMISSIONS: PermSeed[] = [
   // API: CMS
   { code: 'page.read', name: 'List/view pages', type: 'API', apiEndpoint: 'GET /api/v1/pages' },
   { code: 'page.write', name: 'Manage pages', type: 'API', apiEndpoint: 'POST /api/v1/pages' },
+  { code: 'block_template.read', name: 'List block templates', type: 'API', apiEndpoint: 'GET /api/v1/block-templates' },
+  { code: 'block_template.write', name: 'Manage block templates', type: 'API', apiEndpoint: 'POST /api/v1/block-templates' },
   { code: 'banner.read', name: 'List banners', type: 'API', apiEndpoint: 'GET /api/v1/banners' },
   { code: 'banner.write', name: 'Manage banners', type: 'API', apiEndpoint: 'POST /api/v1/banners' },
   { code: 'menu.read', name: 'List navigation menus', type: 'API', apiEndpoint: 'GET /api/v1/menus' },
@@ -115,6 +117,7 @@ const ROLES: { code: string; name: string; description: string; isSystem: boolea
       'product.read', 'product.create', 'product.update', 'product.delete',
       'category.read', 'category.write',
       'page.read', 'page.write', 'banner.read', 'banner.write', 'menu.write',
+      'block_template.read', 'block_template.write',
       'post.read', 'post.write',
       'order.read', 'order.update',
       'element.order.refund_button',
@@ -128,6 +131,7 @@ const ROLES: { code: string; name: string; description: string; isSystem: boolea
     permissions: [
       'menu.dashboard', 'menu.cms',
       'page.read', 'page.write', 'banner.read', 'banner.write',
+      'block_template.read', 'block_template.write',
       'post.read', 'post.write',
     ],
   },

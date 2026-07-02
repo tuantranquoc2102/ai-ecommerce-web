@@ -33,6 +33,8 @@ export const PERM = {
 
   PAGE_READ: 'page.read',
   PAGE_WRITE: 'page.write',
+  BLOCK_TEMPLATE_READ: 'block_template.read',
+  BLOCK_TEMPLATE_WRITE: 'block_template.write',
   BANNER_READ: 'banner.read',
   BANNER_WRITE: 'banner.write',
   MENU_READ: 'menu.read',
