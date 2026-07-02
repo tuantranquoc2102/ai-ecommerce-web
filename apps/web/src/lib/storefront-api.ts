@@ -152,11 +152,25 @@ export function getProductBySlug(slug: string) {
   );
 }
 
-export function getProductsByIds(ids: string[]) {
-  // Backend doesn't have a batch endpoint yet; fall back to individual fetches.
-  // For an MVP with small lists this is fine — TanStack Query dedupes on the
-  // server too. Storefront authors should keep manual product picks under ~10.
-  return Promise.all(ids.map((id) => serverFetch<PublicProduct>(`/products/${id}`, { tags: [`product:${id}`] })));
+/**
+ * Public batch lookup by product IDs. Hits `/products/public/by-ids` (Public,
+ * unlike the admin-gated `/products/:id`) and filters to ACTIVE + non-deleted.
+ * Returns null slots for IDs the server didn't return, preserving caller-
+ * specified order so ProductGrid manual mode + FlashSale render in the exact
+ * sequence the editor picked. Placeholder ids like "REPLACE_1" are dropped
+ * cleanly so pages with unfinished templates don't 500.
+ */
+export async function getProductsByIds(ids: string[]): Promise<Array<PublicProduct | null>> {
+  const cleaned = Array.from(new Set(ids.filter((id) => id && !id.startsWith('REPLACE'))));
+  if (cleaned.length === 0) return ids.map(() => null);
+
+  const qs = encodeURIComponent(cleaned.join(','));
+  const result = await serverFetch<PublicProduct[]>(`/products/public/by-ids?ids=${qs}`, {
+    tags: ['products'],
+  });
+  const list = result ?? [];
+  const byId = new Map(list.map((p) => [p.id, p] as const));
+  return ids.map((id) => byId.get(id) ?? null);
 }
 
 // ---------------------------------------------------------------------------
@@ -167,4 +181,30 @@ export function getCategoryTree() {
   return serverFetch<CategoryTreeNode[]>('/categories/public/tree', {
     tags: ['categories'],
   });
+}
+
+export interface PublicCategoryDetail {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  imageUrl: string | null;
+  parentId: string | null;
+  sortOrder: number;
+  _count: { productCategories: number; children: number };
+  parent: { id: string; name: string; slug: string } | null;
+  children: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    imageUrl: string | null;
+    _count: { productCategories: number };
+  }>;
+}
+
+export function getCategoryBySlug(slug: string) {
+  return serverFetch<PublicCategoryDetail>(
+    `/categories/by-slug/${encodeURIComponent(slug)}`,
+    { tags: ['categories', `category:${slug}`] },
+  );
 }

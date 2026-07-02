@@ -44,6 +44,13 @@ export class CategoriesController {
     return this.categories.tree();
   }
 
+  /** Public single-category lookup for /c/[slug] storefront pages. */
+  @Public()
+  @Get('by-slug/:slug')
+  bySlug(@Param('slug') slug: string) {
+    return this.categories.findPublicBySlug(slug);
+  }
+
   @RequirePermission(PERM.CATEGORY_READ)
   @Get(':id')
   findOne(@Param('id') id: string) {

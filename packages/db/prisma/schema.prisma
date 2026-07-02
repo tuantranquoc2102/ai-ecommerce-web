@@ -415,6 +415,23 @@ model Banner {
   @@index([scheduleEnd])
 }
 
+/// Reusable, pre-configured block instance. Editors save configured blocks
+/// (e.g. "Summer Slider 2026") as templates, then drop them onto pages via
+/// the drag-and-drop page builder. `config` is the block's props payload
+/// (same shape as what shows up inside a page's `layoutJson.blocks[].props`).
+model BlockTemplate {
+  id           String   @id @default(cuid())
+  name         String
+  blockType    String
+  config       Json
+  previewImage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([blockType])
+}
+
 enum PostStatus {
   DRAFT
   PUBLISHED

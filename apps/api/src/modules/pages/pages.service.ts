@@ -44,7 +44,58 @@ export class PagesService {
   async findBySlug(slug: string) {
     const page = await this.prisma.page.findUnique({ where: { slug } });
     if (!page) throw new NotFoundException({ code: 'PAGE_NOT_FOUND', message: 'Page not found' });
-    return page;
+    const layoutJson = await this.hydrateBlocks(page.layoutJson);
+    return { ...page, layoutJson };
+  }
+
+  /**
+   * Resolve block-template links inside a page's layoutJson. Any block with
+   * a `templateId` gets its `props` (and `type`) replaced with the current
+   * BlockTemplate.config so template edits propagate to every page that
+   * links to them. Deleted templates leave the block's stored props intact.
+   *
+   * This runs on the public /pages/by-slug path only — the admin editor still
+   * fetches raw storage so it can display the link + offer Unlink.
+   */
+  private async hydrateBlocks(layoutJson: Prisma.JsonValue): Promise<Prisma.JsonValue> {
+    if (!layoutJson || typeof layoutJson !== 'object' || Array.isArray(layoutJson)) {
+      return layoutJson;
+    }
+    const asObj = layoutJson as { blocks?: unknown };
+    const raw = asObj.blocks;
+    if (!Array.isArray(raw)) return layoutJson;
+
+    const templateIds = raw
+      .map((b) =>
+        b && typeof b === 'object' && typeof (b as { templateId?: unknown }).templateId === 'string'
+          ? ((b as { templateId: string }).templateId)
+          : null,
+      )
+      .filter((v): v is string => typeof v === 'string');
+    if (templateIds.length === 0) return layoutJson;
+
+    const templates = await this.prisma.blockTemplate.findMany({
+      where: { id: { in: Array.from(new Set(templateIds)) } },
+    });
+    const byId = new Map(templates.map((t) => [t.id, t]));
+
+    const nextBlocks = raw.map((b) => {
+      if (!b || typeof b !== 'object') return b;
+      const block = b as Record<string, unknown>;
+      const templateId = typeof block.templateId === 'string' ? block.templateId : null;
+      if (!templateId) return block;
+      const tpl = byId.get(templateId);
+      if (!tpl) return block; // template deleted → keep block's own props
+      return {
+        ...block,
+        // Template drives both type and props at render time. Keeps blocks
+        // in sync even if the editor changed a block's underlying type.
+        type: tpl.blockType,
+        props: tpl.config,
+      };
+    });
+
+    return { ...(layoutJson as Record<string, unknown>), blocks: nextBlocks } as Prisma.JsonValue;
   }
 
   async create(input: CreatePageDto) {

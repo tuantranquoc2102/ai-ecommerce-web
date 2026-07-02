@@ -42,6 +42,7 @@ import {
   useToast,
 } from '@ecom/ui';
 import { ApiError, apiFetch } from '@/lib/api-client';
+import { revalidateStorefront } from '@/lib/revalidate';
 import { ImageUpload } from '@/components/image-upload';
 
 type Banner = {
@@ -91,6 +92,8 @@ export default function BannersPage() {
     try {
       await apiFetch<null>(`/banners/${b.id}`, { method: 'DELETE' });
       toast({ title: 'Banner deleted', variant: 'success' });
+      // Any page rendering HeroBanner/BannerSlider at this position must re-check.
+      await revalidateStorefront(['banners', `banner:${b.position}`, 'pages']);
       load();
     } catch (e) {
       toast({
@@ -207,7 +210,7 @@ export default function BannersPage() {
     <>
       <PageHeader
         title="Banners"
-        description="Promotional images placed at named positions. Schedule start/end for auto-activation. Expired banners auto-deactivate every minute."
+        description='Banner records are just the image + schedule metadata. To make one visible, add a HeroBanner or BannerSlider block on a page with matching "bannerPosition". Ex: banner at position "home_hero" → block with bannerPosition="home_hero". Requires isActive=true and current time within schedule window.'
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="size-4" /> New banner
@@ -351,6 +354,12 @@ function BannerFormSheet({
         await apiFetch('/banners', { method: 'POST', body: JSON.stringify(body) });
         toast({ title: 'Banner created', variant: 'success' });
       }
+      // Purge the storefront tag for this position so the new image + copy
+      // appears on the next public request — no 60s wait.
+      const position = values.position ?? initial?.position;
+      await revalidateStorefront(
+        ['banners', position ? `banner:${position}` : '', 'pages'].filter(Boolean),
+      );
       onSaved();
     } catch (e) {
       toast({

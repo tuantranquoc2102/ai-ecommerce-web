@@ -17,6 +17,7 @@ import { MediaModule } from './modules/media/media.module';
 import { PagesModule } from './modules/pages/pages.module';
 import { MenusModule } from './modules/menus/menus.module';
 import { BannersModule } from './modules/banners/banners.module';
+import { BlockTemplatesModule } from './modules/block-templates/block-templates.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './modules/authz/permissions.guard';
 
@@ -39,6 +40,7 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
     PagesModule,
     MenusModule,
     BannersModule,
+    BlockTemplatesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

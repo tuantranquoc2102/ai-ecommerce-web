@@ -8,4 +8,6 @@ export * from './dto/tag.dto';
 export * from './dto/category.dto';
 export * from './dto/product.dto';
 export * from './dto/cms.dto';
+export * from './dto/block-template.dto';
+export * from './cms/block-schemas';
 export * from './catalog/variant-matrix';
