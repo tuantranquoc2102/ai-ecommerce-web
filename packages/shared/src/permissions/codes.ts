@@ -35,6 +35,7 @@ export const PERM = {
   PAGE_WRITE: 'page.write',
   BANNER_READ: 'banner.read',
   BANNER_WRITE: 'banner.write',
+  MENU_READ: 'menu.read',
   MENU_WRITE: 'menu.write',
   POST_READ: 'post.read',
   POST_WRITE: 'post.write',
