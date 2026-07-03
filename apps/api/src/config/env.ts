@@ -34,6 +34,21 @@ const EnvSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   S3_PUBLIC_URL: z.string().url(),
+
+  ORDER_PAYMENT_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(15),
+  ORDER_NUMBER_PREFIX: z.string().min(1).max(10).default('ECOM'),
+
+  VNPAY_TMN_CODE: z.string().optional().default(''),
+  VNPAY_HASH_SECRET: z.string().optional().default(''),
+  VNPAY_URL: z.string().optional().default('https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'),
+  VNPAY_RETURN_URL: z.string().optional().default('http://localhost:3000/checkout/return/vnpay'),
+
+  MOMO_PARTNER_CODE: z.string().optional().default(''),
+  MOMO_ACCESS_KEY: z.string().optional().default(''),
+  MOMO_SECRET_KEY: z.string().optional().default(''),
+  MOMO_CREATE_URL: z.string().optional().default('https://test-payment.momo.vn/v2/gateway/api/create'),
+  MOMO_RETURN_URL: z.string().optional().default('http://localhost:3000/checkout/return/momo'),
+  MOMO_IPN_URL: z.string().optional().default('http://localhost:4000/api/v1/payments/momo/ipn'),
 });
 
 export type AppEnv = z.infer<typeof EnvSchema>;

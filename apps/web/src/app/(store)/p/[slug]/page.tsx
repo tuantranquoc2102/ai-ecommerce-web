@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { Badge, Button } from '@ecom/ui';
+import { Badge } from '@ecom/ui';
 import { getProductBySlug } from '@/lib/storefront-api';
 import { ProductGallery } from './product-gallery';
+import { AddToCartControls } from './add-to-cart-controls';
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -104,46 +105,7 @@ export default async function ProductDetail({ params }: Props) {
             </div>
           ) : null}
 
-          <div className="mt-8 hidden gap-2 lg:flex">
-            <Button size="lg" disabled={outOfStock} className="h-12 flex-1 text-base font-semibold">
-              {outOfStock ? 'Out of stock' : 'Add to cart'}
-            </Button>
-            <Button variant="outline" size="lg" disabled={outOfStock} className="h-12">
-              Buy now
-            </Button>
-          </div>
-
-          <p className="mt-3 hidden text-xs text-muted-foreground lg:block">
-            Cart + checkout wiring lands in M3.3.
-          </p>
-        </div>
-      </div>
-
-      {/*
-        Mobile sticky bottom bar. Renders below-lg only. h-16 gives the
-        button a 44px+ tap target even with the surrounding chrome. Space
-        below the container is added inline so the bar never covers content.
-      */}
-      <div className="h-24 lg:hidden" aria-hidden />
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 p-3 shadow-lg backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <div className="min-w-0">
-            {product.salePrice ? (
-              <>
-                <div className="text-lg font-semibold text-primary">${product.salePrice}</div>
-                <div className="text-xs text-muted-foreground line-through">${product.basePrice}</div>
-              </>
-            ) : (
-              <div className="text-lg font-semibold">${product.basePrice}</div>
-            )}
-          </div>
-          <Button
-            size="lg"
-            disabled={outOfStock}
-            className="ml-auto h-12 flex-1 text-base font-semibold"
-          >
-            {outOfStock ? 'Out of stock' : 'Add to cart'}
-          </Button>
+          <AddToCartControls product={product} outOfStock={outOfStock} />
         </div>
       </div>
     </div>

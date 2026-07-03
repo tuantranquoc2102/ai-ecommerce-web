@@ -18,6 +18,9 @@ import { PagesModule } from './modules/pages/pages.module';
 import { MenusModule } from './modules/menus/menus.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { BlockTemplatesModule } from './modules/block-templates/block-templates.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { OrdersModule } from './modules/orders/orders.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './modules/authz/permissions.guard';
 
@@ -41,6 +44,9 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
     MenusModule,
     BannersModule,
     BlockTemplatesModule,
+    CouponsModule,
+    PaymentsModule,
+    OrdersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

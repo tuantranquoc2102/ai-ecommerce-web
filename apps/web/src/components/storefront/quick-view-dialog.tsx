@@ -14,6 +14,7 @@ import {
   useToast,
 } from '@ecom/ui';
 import type { PublicProduct } from '@/lib/storefront-api';
+import { useCart } from '@/lib/cart/cart-context';
 
 export function QuickViewDialog({
   product,
@@ -25,14 +26,19 @@ export function QuickViewDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const { toast } = useToast();
+  const cart = useCart();
   const outOfStock = product.type === 'PHYSICAL' && product.stockQuantity <= 0;
 
   function addToCart() {
-    toast({
-      title: `Added "${product.title}" to cart`,
-      description: 'Checkout is wired up in M3.3.',
-      variant: 'success',
+    cart.add({
+      productId: product.id,
+      slug: product.slug,
+      title: product.title,
+      mainImage: product.mainImage,
+      unitPrice: product.salePrice ?? product.basePrice,
+      basePrice: product.basePrice,
     });
+    toast({ title: `Added "${product.title}" to cart`, variant: 'success' });
     onOpenChange(false);
   }
 

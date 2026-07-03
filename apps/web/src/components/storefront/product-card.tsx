@@ -5,6 +5,7 @@ import { Eye, ShoppingBag } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, cn, useToast } from '@ecom/ui';
 import type { PublicProduct } from '@/lib/storefront-api';
+import { useCart } from '@/lib/cart/cart-context';
 import { QuickViewDialog } from './quick-view-dialog';
 
 interface Props {
@@ -25,6 +26,7 @@ export function ProductCard({ product, badgeLabel }: Props) {
   const [hover, setHover] = useState(false);
   const [quickViewOpen, setQuickViewOpen] = useState(false);
   const { toast } = useToast();
+  const cart = useCart();
 
   const front = product.mainImage;
   const back = product.galleryImages?.find((u) => u && u !== product.mainImage) ?? null;
@@ -35,10 +37,16 @@ export function ProductCard({ product, badgeLabel }: Props) {
   function addToCart(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    // TODO: wire to real cart store in M3.3
+    cart.add({
+      productId: product.id,
+      slug: product.slug,
+      title: product.title,
+      mainImage: product.mainImage,
+      unitPrice: product.salePrice ?? product.basePrice,
+      basePrice: product.basePrice,
+    });
     toast({
       title: `Added "${product.title}" to cart`,
-      description: 'Checkout is wired up in M3.3.',
       variant: 'success',
     });
   }
