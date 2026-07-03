@@ -7,6 +7,41 @@ import { toSlug } from '../../common/slug';
 export class TagsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Storefront-facing tag list. Only surfaces tags that have at least one
+   * ACTIVE, non-deleted product — no orphaned tags leak to the product filter
+   * sidebar. Sorted alphabetically; capped to keep the sidebar sane.
+   */
+  async listPublic(limit = 100) {
+    const rows = await this.prisma.tag.findMany({
+      where: {
+        productTags: {
+          some: { product: { status: 'ACTIVE', deletedAt: null } },
+        },
+      },
+      orderBy: { name: 'asc' },
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        _count: {
+          select: {
+            productTags: {
+              where: { product: { status: 'ACTIVE', deletedAt: null } },
+            },
+          },
+        },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      productCount: r._count.productTags,
+    }));
+  }
+
   async list(query: ListTagsQuery) {
     const where = query.search
       ? {

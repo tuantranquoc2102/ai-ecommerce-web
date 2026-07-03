@@ -18,6 +18,9 @@ export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(query: ListProductsQuery) {
+    const tagIds = collectTagIds(query.tagId, query.tagIds);
+    const priceFilter = buildPriceFilter(query.minPrice, query.maxPrice);
+
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
       ...(query.status ? { status: query.status } : {}),
@@ -27,13 +30,15 @@ export class ProductsService {
             OR: [
               { title: { contains: query.search, mode: 'insensitive' } },
               { slug: { contains: query.search, mode: 'insensitive' } },
+              { description: { contains: query.search, mode: 'insensitive' } },
             ],
           }
         : {}),
       ...(query.categoryId
         ? { productCategories: { some: { categoryId: query.categoryId } } }
         : {}),
-      ...(query.tagId ? { productTags: { some: { tagId: query.tagId } } } : {}),
+      ...(tagIds.length ? { productTags: { some: { tagId: { in: tagIds } } } } : {}),
+      ...(priceFilter ? { basePrice: priceFilter } : {}),
     };
 
     const skip = (query.page - 1) * query.pageSize;
@@ -284,4 +289,19 @@ export class ProductsService {
       });
     }
   }
+}
+
+function collectTagIds(single: string | undefined, csv: string | undefined): string[] {
+  const out = new Set<string>();
+  if (single) out.add(single);
+  if (csv) csv.split(',').map((s) => s.trim()).filter(Boolean).forEach((id) => out.add(id));
+  return Array.from(out);
+}
+
+function buildPriceFilter(min: number | undefined, max: number | undefined): Prisma.DecimalFilter | null {
+  if (min === undefined && max === undefined) return null;
+  const filter: Prisma.DecimalFilter = {};
+  if (min !== undefined) filter.gte = new Prisma.Decimal(min);
+  if (max !== undefined) filter.lte = new Prisma.Decimal(max);
+  return filter;
 }

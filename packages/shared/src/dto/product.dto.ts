@@ -59,6 +59,14 @@ export const ListProductsQuery = z.object({
   type: ProductType.optional(),
   categoryId: z.string().cuid().optional(),
   tagId: z.string().cuid().optional(),
+  /**
+   * Comma-separated list of tag ids. When present, products match if they
+   * carry ANY of the listed tags (OR semantics). Coexists with `tagId` for
+   * back-compat; if both are present, they combine into the same OR set.
+   */
+  tagIds: z.string().optional(),
+  minPrice: z.coerce.number().nonnegative().optional(),
+  maxPrice: z.coerce.number().positive().optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(20),
   sortBy: z.enum(['createdAt', 'updatedAt', 'title', 'basePrice']).default('createdAt'),
