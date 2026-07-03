@@ -1,8 +1,10 @@
 import Link from 'next/link';
-import { LogIn, Search, ShoppingBag, User } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Button, cn } from '@ecom/ui';
 import type { MenuItem } from '@ecom/shared';
 import { getMenusByPosition } from '@/lib/storefront-api';
+import { CartButton } from './cart-button';
+import { AccountMenu } from './account-menu';
 
 /**
  * Storefront header. Renders the first HEADER menu tree horizontally with
@@ -33,17 +35,8 @@ export async function SiteHeader() {
           <Button variant="ghost" size="icon" aria-label="Search">
             <Search className="size-4" />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Cart" asChild>
-            <Link href="/cart">
-              <ShoppingBag className="size-4" />
-            </Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/login">
-              <LogIn className="size-4" />
-              <span className="hidden sm:inline">Sign in</span>
-            </Link>
-          </Button>
+          <CartButton />
+          <AccountMenu />
         </div>
       </div>
     </header>
