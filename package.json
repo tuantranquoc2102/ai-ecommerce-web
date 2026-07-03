@@ -16,6 +16,7 @@
     "db:generate": "pnpm --filter @ecom/db prisma:generate",
     "db:migrate": "pnpm --filter @ecom/db prisma:migrate",
     "db:seed": "pnpm --filter @ecom/db prisma:seed",
+    "db:seed:products": "pnpm --filter @ecom/db prisma:seed:products",
     "db:studio": "pnpm --filter @ecom/db prisma:studio",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"

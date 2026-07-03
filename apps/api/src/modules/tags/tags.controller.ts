@@ -16,6 +16,7 @@ import {
   PERM,
   UpdateTagDto,
 } from '@ecom/shared';
+import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { TagsService } from './tags.service';
@@ -28,6 +29,15 @@ export class TagsController {
   @Get()
   list(@Query(new ZodValidationPipe(ListTagsQuery)) query: ListTagsQuery) {
     return this.tags.list(query);
+  }
+
+  /**
+   * Storefront tag filter list — only tags with at least one active product.
+   */
+  @Public()
+  @Get('public/list')
+  publicList() {
+    return this.tags.listPublic();
   }
 
   @RequirePermission(PERM.TAG_READ)

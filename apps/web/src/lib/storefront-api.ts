@@ -126,7 +126,11 @@ export interface PublicProductList {
 export function listPublicProducts(params: {
   categoryId?: string;
   tagId?: string;
+  /** Comma-separated tag ids for multi-tag filtering (OR semantics). */
+  tagIds?: string;
   search?: string;
+  minPrice?: number;
+  maxPrice?: number;
   pageSize?: number;
   page?: number;
   sortBy?: 'createdAt' | 'title' | 'basePrice';
@@ -135,7 +139,10 @@ export function listPublicProducts(params: {
   const qs = new URLSearchParams();
   if (params.categoryId) qs.set('categoryId', params.categoryId);
   if (params.tagId) qs.set('tagId', params.tagId);
+  if (params.tagIds) qs.set('tagIds', params.tagIds);
   if (params.search) qs.set('search', params.search);
+  if (params.minPrice !== undefined) qs.set('minPrice', String(params.minPrice));
+  if (params.maxPrice !== undefined) qs.set('maxPrice', String(params.maxPrice));
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));
   if (params.page) qs.set('page', String(params.page));
   if (params.sortBy) qs.set('sortBy', params.sortBy);
@@ -143,6 +150,17 @@ export function listPublicProducts(params: {
   return serverFetch<PublicProductList>(`/products/public/list?${qs.toString()}`, {
     tags: ['products'],
   });
+}
+
+export interface PublicTag {
+  id: string;
+  name: string;
+  slug: string;
+  productCount: number;
+}
+
+export function getPublicTags() {
+  return serverFetch<PublicTag[]>('/tags/public/list', { tags: ['tags'] });
 }
 
 export function getProductBySlug(slug: string) {

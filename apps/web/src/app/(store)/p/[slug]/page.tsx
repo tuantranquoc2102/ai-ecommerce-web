@@ -54,7 +54,7 @@ export default async function ProductDetail({ params }: Props) {
             {product.productCategories.map(({ category }) => (
               <Link
                 key={category.id}
-                href={`/products?category=${category.id}`}
+                href={`/c/${category.slug}`}
                 className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent"
               >
                 {category.name}
