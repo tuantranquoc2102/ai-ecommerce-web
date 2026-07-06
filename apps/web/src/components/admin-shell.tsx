@@ -38,6 +38,8 @@ import {
   SheetContent,
   SheetTrigger,
 } from '@ecom/ui';
+import { logout as apiLogout } from '@/lib/api-client';
+import { invalidatePermissionCache } from '@/lib/permissions';
 
 interface NavItem {
   href: Route;
@@ -149,7 +151,12 @@ function MobileMenu() {
 }
 
 function UserMenu() {
-  function logout() {
+  async function logout() {
+    // Revoke the refresh token + clear the stored JWTs before dropping the
+    // session cookie, otherwise the account stays authenticated (API calls and
+    // the storefront header would still see a live session).
+    await apiLogout();
+    invalidatePermissionCache();
     document.cookie = 'ecom.session=; path=/; max-age=0';
     window.location.href = '/login';
   }

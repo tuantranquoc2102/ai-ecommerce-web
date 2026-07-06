@@ -1,4 +1,5 @@
 import { Controller, Get, HttpCode, HttpStatus, Post, Query, Req } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { FastifyRequest } from 'fastify';
 import { Public } from '../../common/decorators/public.decorator';
 import { PaymentsService } from './payments.service';
@@ -16,7 +17,12 @@ import { PaymentsService } from './payments.service';
  * IPN, not from the return URL.
  */
 @Controller('payments')
+@SkipThrottle()
 export class PaymentsController {
+  // Payment gateways retry IPNs on their own schedule — we defend against
+  // duplicates via signature check + Redis SETNX in PaymentsService, not via
+  // rate limits. IP allowlisting these routes at the reverse proxy is the
+  // recommended production posture.
   constructor(private readonly payments: PaymentsService) {}
 
   /**

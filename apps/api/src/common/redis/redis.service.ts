@@ -32,6 +32,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.client.set(key, value, 'EX', ttlSeconds);
   }
 
+  /**
+   * Idempotency primitive. Sets the key only if it does not already exist,
+   * with the given TTL. Returns `true` when this call claimed the key
+   * (caller should proceed with the side effect), `false` when someone else
+   * has already claimed it (caller should short-circuit and return the
+   * cached result stored under `key`).
+   */
+  async setNxEx(key: string, ttlSeconds: number, value: string): Promise<boolean> {
+    const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
+  }
+
   async get(key: string): Promise<string | null> {
     return this.client.get(key);
   }

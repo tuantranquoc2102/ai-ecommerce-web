@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   LoginDto,
@@ -37,6 +38,7 @@ export class AuthController {
   ) {}
 
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post('register')
   async register(@Body(new ZodValidationPipe(RegisterDto)) body: RegisterDto) {
     const user = await this.auth.register(body);
@@ -44,6 +46,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @HttpCode(HttpStatus.OK)
   @Post('login')
   async login(@Body(new ZodValidationPipe(LoginDto)) body: LoginDto, @Req() req: FastifyRequest) {
@@ -51,6 +54,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @HttpCode(HttpStatus.OK)
   @Post('login/2fa')
   async loginTwoFactor(
@@ -74,6 +78,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
   @HttpCode(HttpStatus.OK)
   @Post('otp/request')
   async otpRequest(@Body(new ZodValidationPipe(OtpRequestDto)) body: OtpRequestDto) {
@@ -88,6 +93,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('password/reset/request')
   async passwordResetRequest(
@@ -97,6 +103,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('password/reset/confirm')
   async passwordResetConfirm(

@@ -27,6 +27,15 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!u || u.status !== 'ACTIVE') {
       throw new UnauthorizedException({ code: 'USER_INACTIVE' });
     }
+    // Reject access tokens minted at/before the last force-logout. `iat` is in
+    // seconds; compare against the (ms) epoch, flooring the epoch to the second
+    // so a token issued in the same second as the revocation is also rejected.
+    if (u.sessionsRevokedAt && payload.iat !== undefined) {
+      const revokedAtSec = Math.floor(u.sessionsRevokedAt.getTime() / 1000);
+      if (payload.iat <= revokedAtSec) {
+        throw new UnauthorizedException({ code: 'SESSION_REVOKED' });
+      }
+    }
     return {
       id: u.id,
       email: u.email,

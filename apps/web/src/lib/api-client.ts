@@ -23,10 +23,37 @@ function readTokens(): AuthTokens | null {
   }
 }
 
+type TokenListener = () => void;
+const tokenListeners = new Set<TokenListener>();
+let storageListenerAttached = false;
+
+function notifyTokenListeners(): void {
+  for (const listener of tokenListeners) listener();
+}
+
 function writeTokens(tokens: AuthTokens | null): void {
   if (typeof window === 'undefined') return;
   if (!tokens) window.localStorage.removeItem(TOKEN_KEY);
   else window.localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
+  notifyTokenListeners();
+}
+
+/**
+ * Subscribe to token changes (login, logout, refresh, and cross-tab writes via
+ * the `storage` event). Returns an unsubscribe fn. Lets session-aware UI —
+ * e.g. the persistent storefront header — react without a full page reload.
+ */
+function subscribeTokens(listener: TokenListener): () => void {
+  tokenListeners.add(listener);
+  if (typeof window !== 'undefined' && !storageListenerAttached) {
+    storageListenerAttached = true;
+    window.addEventListener('storage', (e) => {
+      if (e.key === TOKEN_KEY || e.key === null) notifyTokenListeners();
+    });
+  }
+  return () => {
+    tokenListeners.delete(listener);
+  };
 }
 
 let refreshInFlight: Promise<AuthTokens | null> | null = null;
@@ -106,7 +133,29 @@ export async function apiFetch<T>(
 export const tokenStore = {
   read: readTokens,
   write: writeTokens,
+  subscribe: subscribeTokens,
 };
 
 export type Me = AuthUserView;
 export const fetchMe = (): Promise<Me> => apiFetch<Me>('/auth/me');
+
+/**
+ * Ends the session everywhere: revokes the refresh token server-side (so it
+ * can't be used to mint new access tokens) and clears the local JWTs. The
+ * server call is best-effort — local tokens are cleared regardless so the UI
+ * never appears "still logged in" after a logout.
+ */
+export async function logout(): Promise<void> {
+  const tokens = readTokens();
+  if (tokens?.refreshToken) {
+    try {
+      await apiFetch<null>('/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+      });
+    } catch {
+      // Ignore — we still clear local state below.
+    }
+  }
+  writeTokens(null);
+}

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import type { LoginResult, AuthUserView } from '@ecom/shared';
 import { UsersService } from '../users/users.service';
@@ -7,12 +7,15 @@ import { OtpService } from './otp.service';
 import { PasswordResetService } from './password-reset.service';
 import { TwoFactorService } from './two-factor.service';
 import { RedisService } from '../../common/redis/redis.service';
+import { MailService } from '../../common/mail/mail.service';
 import { PermissionsService } from '../authz/permissions.service';
 
 const TWO_FA_TICKET_TTL = 300;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly users: UsersService,
     private readonly tokens: TokenService,
@@ -21,6 +24,7 @@ export class AuthService {
     private readonly twoFa: TwoFactorService,
     private readonly redis: RedisService,
     private readonly permissions: PermissionsService,
+    private readonly mail: MailService,
   ) {}
 
   async register(input: { email: string; password: string; firstName?: string; lastName?: string }) {
@@ -31,6 +35,15 @@ export class AuthService {
     const user = await this.users.createWithPassword(input);
     await this.users.assignRoleByCode(user.id, 'CUSTOMER');
     await this.permissions.invalidateAll();
+
+    // Welcome mail is best-effort — registration succeeds regardless. The
+    // user is already in the DB and can log in even if delivery fails.
+    this.mail
+      .sendWelcome({ to: user.email, firstName: user.firstName })
+      .catch((e) =>
+        this.logger.error(`Failed to send welcome mail to ${user.email}: ${(e as Error).message}`),
+      );
+
     return user;
   }
 

@@ -1,6 +1,7 @@
 import { BadRequestException, HttpException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { RedisService } from '../../common/redis/redis.service';
+import { MailService } from '../../common/mail/mail.service';
 import { ENV_TOKEN, AppEnv } from '../../config/env';
 
 class Throttled extends HttpException {
@@ -15,6 +16,7 @@ export class OtpService {
 
   constructor(
     private readonly redis: RedisService,
+    private readonly mail: MailService,
     @Inject(ENV_TOKEN) private readonly env: AppEnv,
   ) {}
 
@@ -29,8 +31,18 @@ export class OtpService {
     await this.redis.setEx(`otp:${norm}`, this.env.OTP_TTL_SECONDS, payload);
     await this.redis.setEx(cooldownKey, 60, '1');
 
-    // Real implementation would call an email/SMS gateway here.
-    this.logger.warn(`[DEV-ONLY] OTP for ${norm} (${channel}): ${code}`);
+    if (channel === 'EMAIL') {
+      // Fire-and-forget: OTP creation already succeeded (code is in Redis),
+      // so a mail-delivery failure shouldn't block the API response. Errors
+      // are logged inside MailService for ops to follow up on.
+      this.mail
+        .sendOtp({ to: norm, code, ttlSeconds: this.env.OTP_TTL_SECONDS })
+        .catch((e) => this.logger.error(`Failed to send OTP mail to ${norm}: ${(e as Error).message}`));
+    } else {
+      // SMS provider still to be wired (Twilio / eSMS / Speedchat). For now,
+      // log the code so QA can complete SMS-only flows during development.
+      this.logger.warn(`[SMS-DEV] OTP for ${norm}: ${code} — SMS gateway not yet configured`);
+    }
 
     return { ttl: this.env.OTP_TTL_SECONDS };
   }
