@@ -2,9 +2,16 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import { LoggerModule } from 'nestjs-pino';
+import Redis from 'ioredis';
+import { randomUUID } from 'node:crypto';
 import { EnvModule } from './config/env.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
+import { MailModule } from './common/mail/mail.module';
+import { ENV_TOKEN, type AppEnv } from './config/env';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthzModule } from './modules/authz/authz.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -21,6 +28,7 @@ import { BlockTemplatesModule } from './modules/block-templates/block-templates.
 import { CouponsModule } from './modules/coupons/coupons.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { HealthModule } from './modules/health/health.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './modules/authz/permissions.guard';
 
@@ -28,9 +36,65 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     ScheduleModule.forRoot(),
+    // Structured logging via pino. Pretty output in development, JSON in
+    // production (log aggregators expect single-line JSON). Every request
+    // gets a UUID stored as `req.id` so downstream logs can be correlated.
+    // Health-check noise is suppressed.
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+        genReqId: (req) => (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
+        customLogLevel: (_req, res, err) => {
+          if (err || res.statusCode >= 500) return 'error';
+          if (res.statusCode >= 400) return 'warn';
+          return 'info';
+        },
+        autoLogging: {
+          ignore: (req) => req.url?.startsWith('/api/v1/healthz') ?? false,
+        },
+        redact: {
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'req.body.password',
+            'req.body.newPassword',
+            'req.body.refreshToken',
+            'res.headers["set-cookie"]',
+          ],
+          censor: '[REDACTED]',
+        },
+        transport:
+          process.env.NODE_ENV === 'production'
+            ? undefined
+            : {
+                target: 'pino-pretty',
+                options: {
+                  singleLine: true,
+                  translateTime: 'HH:MM:ss.l',
+                  ignore: 'pid,hostname,req.headers,res.headers',
+                },
+              },
+      },
+    }),
     EnvModule,
     PrismaModule,
     RedisModule,
+    MailModule,
+    // Rate limiting. One default bucket (100 req/min per IP) applies to
+    // every request. Sensitive endpoints override this ceiling via
+    // `@Throttle({ default: { ttl, limit } })` on the controller method —
+    // that decorator REPLACES the default config for that route only, it
+    // does not stack. Storage is Redis-backed so limits stay consistent
+    // across API pods.
+    ThrottlerModule.forRootAsync({
+      inject: [ENV_TOKEN],
+      useFactory: (env: AppEnv) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
+        storage: new ThrottlerStorageRedisService(
+          new Redis(env.REDIS_URL, { keyPrefix: 'throttle:' }),
+        ),
+      }),
+    }),
     AuthModule,
     AuthzModule,
     UsersModule,
@@ -47,8 +111,12 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
     CouponsModule,
     PaymentsModule,
     OrdersModule,
+    HealthModule,
   ],
   providers: [
+    // Order matters: ThrottlerGuard runs before JwtAuthGuard so bots hitting
+    // /auth/login are rate-limited without paying for a JWT lookup first.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

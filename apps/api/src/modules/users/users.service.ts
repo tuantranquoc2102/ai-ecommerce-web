@@ -249,10 +249,10 @@ export class UsersService {
   }
 
   /**
-   * Revoke every active refresh token for this user. Existing access tokens
-   * remain valid until their short TTL expires — that's an accepted trade-off
-   * of stateless JWTs; refresh will fail so the user is logged out on next
-   * silent-refresh attempt.
+   * Force-logout: revoke every active refresh token AND bump the user's session
+   * epoch (`sessionsRevokedAt`). Bumping the epoch invalidates already-issued
+   * access tokens immediately (JwtStrategy rejects tokens with `iat` at/before
+   * it), so the user is kicked out now rather than only on next silent-refresh.
    */
   async revokeAllSessions(userId: string): Promise<{ count: number }> {
     await this.findByIdForAdmin(userId);
@@ -260,6 +260,10 @@ export class UsersService {
     const result = await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: now },
+    });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { sessionsRevokedAt: now },
     });
     return { count: result.count };
   }

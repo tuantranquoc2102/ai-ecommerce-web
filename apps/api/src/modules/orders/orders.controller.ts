@@ -8,6 +8,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   AdminListOrdersQuery,
   CreateOrderDto,
@@ -37,6 +38,7 @@ export class OrdersController {
    * (for the confirmation URL), and an optional gateway redirect URL.
    */
   @OptionalAuth()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('checkout')
   async checkout(
     @Body(new ZodValidationPipe(CreateOrderDto)) body: CreateOrderDto,

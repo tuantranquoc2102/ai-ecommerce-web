@@ -8,6 +8,8 @@ export type JwtPayload = {
   sub: string;
   email: string;
   type: 'access';
+  /** Issued-at, in seconds. Auto-populated by JwtService.sign. */
+  iat?: number;
 };
 
 export type IssueOptions = {

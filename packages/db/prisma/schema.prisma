@@ -35,6 +35,10 @@ model User {
   twoFactorSecret        String?
   twoFactorRecoveryCodes String[]    @default([])
   lastLoginAt            DateTime?
+  // Session epoch: any access token issued at/before this instant is rejected
+  // (see JwtStrategy). Bumped on force-logout / suspend so revocation is
+  // immediate instead of waiting for the access-token TTL to lapse.
+  sessionsRevokedAt      DateTime?
 
   oauthAccounts       OAuthAccount[]
   refreshTokens       RefreshToken[]

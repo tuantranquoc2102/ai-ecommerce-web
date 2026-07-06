@@ -5,6 +5,7 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
 import fastifyCookie from '@fastify/cookie';
 import fastifyMultipart from '@fastify/multipart';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -13,9 +14,21 @@ import { loadEnv } from './config/env';
 async function bootstrap() {
   const env = loadEnv();
 
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true }), {
-    bufferLogs: true,
-  });
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter({
+      trustProxy: true,
+      // Reuse the request id header that most reverse proxies inject; pino
+      // will otherwise generate one. Having a stable ID makes logs traceable
+      // end-to-end across the LB → API hop.
+      requestIdHeader: 'x-request-id',
+    }),
+    { bufferLogs: true },
+  );
+
+  // Swap the default Nest console logger for pino. `bufferLogs: true` above
+  // means messages during bootstrap flow through the pino logger too.
+  app.useLogger(app.get(Logger));
 
   app.setGlobalPrefix('api/v1');
   app.useGlobalInterceptors(new ResponseInterceptor());
@@ -36,8 +49,7 @@ async function bootstrap() {
   });
 
   await app.listen({ port: env.API_PORT, host: '0.0.0.0' });
-  // eslint-disable-next-line no-console
-  console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
+  app.get(Logger).log(`API listening on http://0.0.0.0:${env.API_PORT}`, 'Bootstrap');
 }
 
 bootstrap().catch((e) => {

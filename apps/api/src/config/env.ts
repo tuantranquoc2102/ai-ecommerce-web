@@ -38,6 +38,13 @@ const EnvSchema = z.object({
   ORDER_PAYMENT_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(15),
   ORDER_NUMBER_PREFIX: z.string().min(1).max(10).default('ECOM'),
 
+  // Resend transactional email. Leave RESEND_API_KEY empty in local dev — the
+  // MailService will log messages to the console instead of hitting the API.
+  RESEND_API_KEY: z.string().optional().default(''),
+  MAIL_FROM: z.string().default('Ecom Store <no-reply@example.com>'),
+  MAIL_REPLY_TO: z.string().optional().default(''),
+  MAIL_BRAND_NAME: z.string().default('Ecom Store'),
+
   VNPAY_TMN_CODE: z.string().optional().default(''),
   VNPAY_HASH_SECRET: z.string().optional().default(''),
   VNPAY_URL: z.string().optional().default('https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'),

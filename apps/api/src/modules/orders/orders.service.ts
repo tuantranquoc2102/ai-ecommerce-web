@@ -19,6 +19,7 @@ import type {
   UpdateOrderStatusDto,
 } from '@ecom/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { MailService } from '../../common/mail/mail.service';
 import { generateOrderNumber } from '../../common/order-number';
 import { ENV_TOKEN, type AppEnv } from '../../config/env';
 import { CouponsService } from '../coupons/coupons.service';
@@ -53,6 +54,7 @@ export class OrdersService {
     @Inject(forwardRef(() => PaymentsService))
     private readonly payments: PaymentsService,
     private readonly tokens: OrderTokensService,
+    private readonly mail: MailService,
     @Inject(ENV_TOKEN) private readonly env: AppEnv,
   ) {}
 
@@ -211,18 +213,30 @@ export class OrdersService {
         throw e;
       });
 
-      // Reserve stock.
+      // Reserve stock atomically. The earlier in-memory check was optimistic
+      // (two concurrent checkouts could both read `available >= qty` before
+      // either wrote). Reserving with a conditional UPDATE ... WHERE stock -
+      // reserved >= qty means the DB is the single source of truth and
+      // second-through-Nth concurrent buyers get rejected on the update
+      // rather than oversell. If any line's row-count comes back as 0 we
+      // throw and let the enclosing transaction roll back — including the
+      // Order row we just inserted.
       for (const l of lines) {
         if (l.product.type !== 'PHYSICAL') continue;
-        if (l.variant) {
-          await tx.productVariant.update({
-            where: { id: l.variant.id },
-            data: { reservedStock: { increment: l.item.quantity } },
-          });
-        } else {
-          await tx.product.update({
-            where: { id: l.product.id },
-            data: { reservedStock: { increment: l.item.quantity } },
+        const qty = l.item.quantity;
+        const [table, id] = l.variant
+          ? (['ProductVariant', l.variant.id] as const)
+          : (['Product', l.product.id] as const);
+        const affected = await tx.$executeRawUnsafe(
+          `UPDATE "${table}" SET "reservedStock" = "reservedStock" + $1, "updatedAt" = NOW() WHERE "id" = $2 AND "stockQuantity" - "reservedStock" >= $1`,
+          qty,
+          id,
+        );
+        if (affected === 0) {
+          throw new BadRequestException({
+            code: 'INSUFFICIENT_STOCK',
+            message: `Not enough stock for "${l.product.title}"`,
+            details: { productId: l.product.id, requested: qty },
           });
         }
       }
@@ -316,10 +330,26 @@ export class OrdersService {
    * Idempotent: repeat calls for an already-PAID order return early.
    */
   async markPaid(orderId: string, paymentTxnId?: string): Promise<void> {
+    // Everything the confirmation email needs is captured inside the tx and
+    // dispatched after it commits — so a mail-provider hiccup can never
+    // block or roll back a successful payment.
+    let mailContext: OrderPaidMailContext | null = null;
+
     await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: true },
+        include: {
+          items: {
+            include: {
+              product: {
+                select: { id: true, type: true, digitalType: true, title: true, mainImage: true },
+              },
+            },
+          },
+          shipping: true,
+          payments: { orderBy: { createdAt: 'desc' } },
+          user: { select: { firstName: true } },
+        },
       });
       if (!order) {
         throw new NotFoundException({ code: 'ORDER_NOT_FOUND', message: 'Order not found' });
@@ -329,8 +359,11 @@ export class OrdersService {
         return;
       }
 
-      // Move reserved → sold stock.
+      // Move reserved → sold stock. Only PHYSICAL lines had reservedStock
+      // bumped at checkout; DIGITAL lines are skipped so we don't drive
+      // reservedStock negative.
       for (const item of order.items) {
+        if (item.product.type !== 'PHYSICAL') continue;
         if (item.variantId) {
           await tx.productVariant.update({
             where: { id: item.variantId },
@@ -350,9 +383,27 @@ export class OrdersService {
         }
       }
 
+      // Issue digital entitlements. Guests (no linked user) can't be granted
+      // downloads yet — log so the admin can manually attach later once the
+      // guest creates an account (customer-service workflow, out of scope
+      // for this batch). Signed-in DIGITAL buyers get one entitlement per
+      // unit; SERIAL_KEY products consume unused keys from the pool.
+      for (const item of order.items) {
+        if (item.product.type !== 'DIGITAL' || !order.userId) continue;
+        await this.grantDigitalEntitlements(tx, {
+          userId: order.userId,
+          orderItemId: item.id,
+          productId: item.productId,
+          digitalType: item.product.digitalType,
+          quantity: item.quantity,
+          orderNumber: order.orderNumber,
+        });
+      }
+
+      const paidAt = new Date();
       await tx.order.update({
         where: { id: orderId },
-        data: { status: 'PAID', paidAt: new Date() },
+        data: { status: 'PAID', paidAt },
       });
 
       if (paymentTxnId) {
@@ -367,7 +418,139 @@ export class OrdersService {
           data: { status: 'SUCCEEDED', ipnReceivedAt: new Date() },
         });
       }
+
+      // Snapshot everything the mail template needs from within the tx so
+      // the read is consistent with the writes we just committed.
+      if (order.contactEmail) {
+        mailContext = {
+          contactEmail: order.contactEmail,
+          firstName: order.user?.firstName ?? null,
+          orderNumber: order.orderNumber,
+          paidAt,
+          isGuest: order.userId === null,
+          items: order.items.map((it) => ({
+            title: it.titleSnapshot,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice.toString(),
+            lineTotal: it.lineTotal.toString(),
+            mainImage: it.product.mainImage,
+          })),
+          subtotal: order.subtotal.toString(),
+          discountAmount: order.discountAmount.toString(),
+          shippingFee: order.shippingFee.toString(),
+          totalAmount: order.totalAmount.toString(),
+          shipping: order.shipping
+            ? {
+                recipientName: order.shipping.recipientName,
+                recipientPhone: order.shipping.recipientPhone,
+                addressLine: order.shipping.addressLine,
+                ward: order.shipping.ward,
+                district: order.shipping.district,
+                province: order.shipping.province,
+              }
+            : null,
+          paymentProvider: order.payments[0]?.provider ?? 'COD',
+        };
+      }
     });
+
+    if (mailContext) {
+      // Fire-and-forget. The order is already PAID by the time we get here.
+      void this.dispatchOrderConfirmation(mailContext);
+    }
+  }
+
+  private async dispatchOrderConfirmation(ctx: OrderPaidMailContext): Promise<void> {
+    try {
+      // Fresh view-order token so the link in the email works for guests
+      // whose original checkout token may have expired. Auth users don't
+      // strictly need the token but it doesn't hurt to include it.
+      const token = ctx.isGuest ? await this.tokens.issue(ctx.orderNumber) : null;
+      const viewUrl = token
+        ? `${this.env.FRONTEND_URL}/orders/${ctx.orderNumber}?token=${token}`
+        : `${this.env.FRONTEND_URL}/orders/${ctx.orderNumber}`;
+
+      const hasDiscount = Number(ctx.discountAmount) > 0;
+      const shippingFormatted =
+        Number(ctx.shippingFee) === 0 ? 'Free' : formatVnd(ctx.shippingFee);
+
+      await this.mail.sendOrderConfirmation({
+        to: ctx.contactEmail,
+        firstName: ctx.firstName,
+        orderNumber: ctx.orderNumber,
+        paidAt: ctx.paidAt,
+        items: ctx.items.map((i) => ({
+          title: i.title,
+          quantity: i.quantity,
+          unitPriceFormatted: formatVnd(i.unitPrice),
+          lineTotalFormatted: formatVnd(i.lineTotal),
+          imageUrl: i.mainImage,
+        })),
+        subtotalFormatted: formatVnd(ctx.subtotal),
+        discountFormatted: hasDiscount ? formatVnd(ctx.discountAmount) : null,
+        shippingFormatted,
+        totalFormatted: formatVnd(ctx.totalAmount),
+        shipping: ctx.shipping,
+        paymentMethod: formatPaymentMethod(ctx.paymentProvider),
+        viewOrderUrl: viewUrl,
+      });
+    } catch (e) {
+      this.logger.error(
+        `Failed to send order-confirmation mail for ${ctx.orderNumber}: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  private async grantDigitalEntitlements(
+    tx: Prisma.TransactionClient,
+    input: {
+      userId: string;
+      orderItemId: string;
+      productId: string;
+      digitalType: 'FILE_DOWNLOAD' | 'SERIAL_KEY' | null;
+      quantity: number;
+      orderNumber: string;
+    },
+  ): Promise<void> {
+    if (input.digitalType === 'SERIAL_KEY') {
+      const availableKeys = await tx.serialKey.findMany({
+        where: { productId: input.productId, isUsed: false, entitlement: null },
+        take: input.quantity,
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      for (const key of availableKeys) {
+        await tx.serialKey.update({ where: { id: key.id }, data: { isUsed: true } });
+        await tx.digitalEntitlement.create({
+          data: {
+            userId: input.userId,
+            orderItemId: input.orderItemId,
+            serialKeyId: key.id,
+          },
+        });
+      }
+      const shortfall = input.quantity - availableKeys.length;
+      if (shortfall > 0) {
+        // Create key-less entitlements so the customer sees "download pending"
+        // rather than nothing; admin gets alerted below.
+        this.logger.warn(
+          `SerialKey shortfall on order ${input.orderNumber}: ${shortfall}/${input.quantity} for product ${input.productId} — key-less entitlements created, admin must attach keys`,
+        );
+        for (let i = 0; i < shortfall; i++) {
+          await tx.digitalEntitlement.create({
+            data: { userId: input.userId, orderItemId: input.orderItemId },
+          });
+        }
+      }
+      return;
+    }
+    // FILE_DOWNLOAD (or unspecified — defensive default): one entitlement per
+    // unit so refunds can revoke individually if needed later.
+    for (let i = 0; i < input.quantity; i++) {
+      await tx.digitalEntitlement.create({
+        data: { userId: input.userId, orderItemId: input.orderItemId },
+      });
+    }
   }
 
   /**
@@ -636,5 +819,57 @@ export class OrdersService {
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
     };
+  }
+}
+
+/**
+ * Everything the order-confirmation mail needs, captured inside `markPaid`'s
+ * transaction so the send sees exactly the data we just committed.
+ */
+interface OrderPaidMailContext {
+  contactEmail: string;
+  firstName: string | null;
+  orderNumber: string;
+  paidAt: Date;
+  isGuest: boolean;
+  items: Array<{
+    title: string;
+    quantity: number;
+    unitPrice: string;
+    lineTotal: string;
+    mainImage: string | null;
+  }>;
+  subtotal: string;
+  discountAmount: string;
+  shippingFee: string;
+  totalAmount: string;
+  shipping: {
+    recipientName: string;
+    recipientPhone: string;
+    addressLine: string;
+    ward: string | null;
+    district: string | null;
+    province: string | null;
+  } | null;
+  paymentProvider: 'COD' | 'VNPAY' | 'MOMO' | 'CREDIT_CARD';
+}
+
+/** VND formatter mirroring `apps/web/src/lib/storefront/format.ts:formatVnd`. */
+function formatVnd(amount: string | number): string {
+  const n = typeof amount === 'string' ? Number(amount) : amount;
+  if (!Number.isFinite(n)) return '—';
+  return `${new Intl.NumberFormat('vi-VN').format(Math.round(n))} ₫`;
+}
+
+function formatPaymentMethod(provider: 'COD' | 'VNPAY' | 'MOMO' | 'CREDIT_CARD'): string {
+  switch (provider) {
+    case 'COD':
+      return 'Cash on Delivery';
+    case 'VNPAY':
+      return 'VNPAY';
+    case 'MOMO':
+      return 'MoMo';
+    case 'CREDIT_CARD':
+      return 'Credit Card';
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ApiError, fetchMe, tokenStore, type Me } from '../api-client';
+import { ApiError, fetchMe, logout, tokenStore, type Me } from '../api-client';
 
 /**
  * Storefront customer session hook. Reads the (localStorage) JWT and resolves
@@ -21,31 +21,50 @@ export function useCurrentCustomer(): {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    let active = true;
+    // Sequence guard: only the most recent load may commit, so overlapping
+    // runs (e.g. a token write firing while a fetch is in flight) can't
+    // clobber each other with stale results.
+    let seq = 0;
+
+    async function load() {
+      const my = ++seq;
       const tokens = tokenStore.read();
       if (!tokens) {
-        if (!cancelled) setLoading(false);
+        if (active && my === seq) {
+          setUser(null);
+          setLoading(false);
+        }
         return;
       }
+      if (active) setLoading(true);
       try {
         const me = await fetchMe();
-        if (!cancelled) setUser(me);
+        if (active && my === seq) setUser(me);
       } catch (e) {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
           tokenStore.write(null);
         }
+        if (active && my === seq) setUser(null);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (active && my === seq) setLoading(false);
       }
-    })();
+    }
+
+    void load();
+    // Re-resolve the session whenever tokens change (login, register, signOut,
+    // or a write in another tab) so the persistent header updates without a
+    // full page reload.
+    const unsubscribe = tokenStore.subscribe(() => void load());
     return () => {
-      cancelled = true;
+      active = false;
+      unsubscribe();
     };
   }, []);
 
   function signOut() {
-    tokenStore.write(null);
+    // Revoke server-side too; local tokens are cleared by logout() regardless.
+    void logout();
     setUser(null);
   }
 
