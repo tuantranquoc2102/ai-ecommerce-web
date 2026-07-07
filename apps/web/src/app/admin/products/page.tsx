@@ -81,17 +81,22 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<CategoryTreeNode[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
+  const categoryOptions = useMemo(() => flattenCategoryOptions(categories), [categories]);
 
   async function load() {
     setLoading(true);
     setErr(null);
+    const categoryId = categoryFilter === 'ALL' ? undefined : categoryFilter;
+    const qs = new URLSearchParams({ pageSize: '100' });
+    if (categoryId) qs.set('categoryId', categoryId);
     try {
       const [prod, cats, tgs] = await Promise.all([
-        apiFetch<ListProducts>('/products?pageSize=100'),
+        apiFetch<ListProducts>(`/products?${qs.toString()}`),
         apiFetch<CategoryTreeNode[]>('/categories/tree'),
         apiFetch<{ items: Tag[] }>('/tags?pageSize=200'),
       ]);
@@ -107,7 +112,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [categoryFilter]);
 
   async function handleDelete(id: string) {
     try {
@@ -270,15 +275,42 @@ export default function ProductsPage() {
         loading={loading}
         searchColumn="title"
         searchPlaceholder="Search products by title…"
+        toolbar={
+          <div className="min-w-55">
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by category" />
+              </SelectTrigger>
+              <SelectContent className="max-h-80 overflow-y-auto">
+                <SelectItem value="ALL">All categories</SelectItem>
+                {categoryOptions.map((opt) => (
+                  <SelectItem key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        }
         empty={
           <EmptyState
             icon={<Box />}
-            title="No products yet"
-            description="Create your first product to see it listed here."
+            title={categoryFilter === 'ALL' ? 'No products yet' : 'No products in this category'}
+            description={
+              categoryFilter === 'ALL'
+                ? 'Create your first product to see it listed here.'
+                : 'Try another category or clear the filter.'
+            }
             action={
-              <Button onClick={() => setCreating(true)}>
-                <Plus className="size-4" /> Create product
-              </Button>
+              categoryFilter === 'ALL' ? (
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="size-4" /> Create product
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => setCategoryFilter('ALL')}>
+                  Clear filter
+                </Button>
+              )
             }
           />
         }
@@ -371,9 +403,17 @@ function ProductFormSheet({
     },
   });
 
+  const type = form.watch('type');
+  const flatCategories = useMemo(() => flattenCategories(categories), [categories]);
+  const categoryAncestorMap = useMemo(() => buildCategoryAncestorMap(categories), [categories]);
+
   useEffect(() => {
     if (!open) return;
     if (initial) {
+      const normalizedCategoryIds = normalizeSelectedCategoryIds(
+        initial.productCategories.map((pc) => pc.category.id),
+        categoryAncestorMap,
+      );
       form.reset({
         title: initial.title,
         slug: initial.slug,
@@ -384,7 +424,7 @@ function ProductFormSheet({
         salePrice: initial.salePrice ?? undefined,
         stockQuantity: initial.stockQuantity,
         status: initial.status,
-        categoryIds: initial.productCategories.map((pc) => pc.category.id),
+        categoryIds: normalizedCategoryIds,
         tagIds: initial.productTags.map((pt) => pt.tag.id),
         mainImage: initial.mainImage ?? '',
         galleryImages: initial.galleryImages ?? [],
@@ -404,10 +444,7 @@ function ProductFormSheet({
         galleryImages: [],
       });
     }
-  }, [open, initial, form]);
-
-  const type = form.watch('type');
-  const flatCategories = useMemo(() => flattenCategories(categories), [categories]);
+  }, [open, initial, form, categoryAncestorMap]);
 
   async function onSubmit(values: CreateProductValues) {
     // Strip empty optionals so backend defaults apply.
@@ -422,7 +459,9 @@ function ProductFormSheet({
     if (values.description) body.description = values.description;
     if (values.salePrice) body.salePrice = values.salePrice;
     if (values.type === 'DIGITAL' && values.digitalType) body.digitalType = values.digitalType;
-    if (values.categoryIds !== undefined) body.categoryIds = values.categoryIds;
+    if (values.categoryIds !== undefined) {
+      body.categoryIds = normalizeSelectedCategoryIds(values.categoryIds, categoryAncestorMap);
+    }
     if (values.tagIds !== undefined) body.tagIds = values.tagIds;
     body.mainImage = values.mainImage && values.mainImage.trim() ? values.mainImage : null;
     body.galleryImages = values.galleryImages ?? [];
@@ -684,7 +723,9 @@ function ProductFormSheet({
                       <MultiPicker
                         options={flatCategories.map((c) => ({ id: c.id, label: c.name }))}
                         value={field.value ?? []}
-                        onChange={field.onChange}
+                        onChange={(next) =>
+                          field.onChange(normalizeSelectedCategoryIds(next, categoryAncestorMap))
+                        }
                         emptyLabel="No categories yet. Add one below:"
                       />
                       <QuickAddInline
@@ -881,5 +922,44 @@ function flattenCategories(nodes: CategoryTreeNode[]): CategoryTreeNode[] {
     n.children.forEach(walk);
   };
   nodes.forEach(walk);
+  return out;
+}
+
+function buildCategoryAncestorMap(tree: CategoryTreeNode[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const walk = (nodes: CategoryTreeNode[], parents: string[]) => {
+    for (const node of nodes) {
+      out.set(node.id, parents);
+      walk(node.children, [...parents, node.id]);
+    }
+  };
+  walk(tree, []);
+  return out;
+}
+
+function normalizeSelectedCategoryIds(
+  selected: string[],
+  ancestorMap: Map<string, string[]>,
+): string[] {
+  const out = new Set(selected);
+  for (const id of selected) {
+    const ancestors = ancestorMap.get(id) ?? [];
+    for (const parentId of ancestors) out.add(parentId);
+  }
+  return Array.from(out);
+}
+
+function flattenCategoryOptions(
+  nodes: CategoryTreeNode[],
+): Array<{ id: string; label: string }> {
+  const out: Array<{ id: string; label: string }> = [];
+  const walk = (items: CategoryTreeNode[], depth: number) => {
+    for (const node of items) {
+      const prefix = depth > 0 ? `${'  '.repeat(depth)}↳ ` : '';
+      out.push({ id: node.id, label: `${prefix}${node.name}` });
+      walk(node.children, depth + 1);
+    }
+  };
+  walk(nodes, 0);
   return out;
 }

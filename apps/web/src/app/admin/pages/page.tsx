@@ -3,6 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Ellipsis, FileText, LayoutTemplate, Plus } from 'lucide-react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -50,14 +51,22 @@ import {
 } from '@ecom/ui';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { revalidateStorefront } from '@/lib/revalidate';
-import { PageCanvas, type PageBlock } from '@/components/cms/page-canvas';
+import type { PageBlock } from '@/components/cms/page-canvas';
 import { ExternalLink } from 'lucide-react';
+
+const PageCanvas = dynamic(
+  () => import('@/components/cms/page-canvas').then((m) => m.PageCanvas),
+  {
+    ssr: false,
+    loading: () => <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Loading editor…</div>,
+  },
+);
 
 type Page = {
   id: string;
   title: string;
   slug: string;
-  layoutJson: unknown;
+  layoutJson?: unknown;
   seoTitle: string | null;
   seoDesc: string | null;
   status: PageStatus;
@@ -111,12 +120,25 @@ export default function PagesPage() {
     setLoading(true);
     setErr(null);
     try {
-      const r = await apiFetch<ListResponse>('/pages?pageSize=200');
+      const r = await apiFetch<ListResponse>('/pages?pageSize=200&includeLayout=false');
       setData(r.items);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openEdit(row: Page) {
+    try {
+      const full = await apiFetch<Page>(`/pages/${row.id}`);
+      setEditing(full);
+    } catch (e) {
+      toast({
+        title: 'Load page failed',
+        description: (e as Error).message,
+        variant: 'destructive',
+      });
     }
   }
 
@@ -188,7 +210,7 @@ export default function PagesPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setEditing(row.original)}>Edit</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void openEdit(row.original)}>Edit</DropdownMenuItem>
               <ConfirmDialog
                 trigger={
                   <DropdownMenuItem

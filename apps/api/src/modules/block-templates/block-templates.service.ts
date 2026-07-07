@@ -31,6 +31,18 @@ export class BlockTemplatesService {
         orderBy: [{ blockType: 'asc' }, { updatedAt: 'desc' }],
         skip,
         take: query.pageSize,
+        ...(query.includeConfig
+          ? {}
+          : {
+              select: {
+                id: true,
+                name: true,
+                blockType: true,
+                previewImage: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            }),
       }),
       this.prisma.blockTemplate.count({ where }),
     ]);
