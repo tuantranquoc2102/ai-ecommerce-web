@@ -4,16 +4,16 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { Route } from 'next';
 import {
+  BarChart3,
   Box,
   ChevronDown,
   FileText,
-  FolderTree,
   Image as ImageIcon,
-  KeyRound,
   LayoutDashboard,
   LayoutTemplate,
   ListTree,
   LogOut,
+  Megaphone,
   Menu,
   Settings,
   ShieldCheck,
@@ -21,7 +21,7 @@ import {
   Tag,
   Users,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Avatar,
   AvatarFallback,
@@ -41,27 +41,147 @@ import {
 import { logout as apiLogout } from '@/lib/api-client';
 import { invalidatePermissionCache } from '@/lib/permissions';
 
-interface NavItem {
+interface NavLeaf {
   href: Route;
   label: string;
-  icon: ReactNode;
 }
 
-const NAV: NavItem[] = [
-  { href: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="size-4" /> },
-  { href: '/admin/products', label: 'Products', icon: <Box className="size-4" /> },
-  { href: '/admin/categories', label: 'Categories', icon: <FolderTree className="size-4" /> },
-  { href: '/admin/tags', label: 'Tags', icon: <Tag className="size-4" /> },
-  { href: '/admin/pages', label: 'Pages', icon: <FileText className="size-4" /> },
-  { href: '/admin/block-templates', label: 'Block templates', icon: <LayoutTemplate className="size-4" /> },
-  { href: '/admin/menus', label: 'Menus', icon: <ListTree className="size-4" /> },
-  { href: '/admin/banners', label: 'Banners', icon: <ImageIcon className="size-4" /> },
-  { href: '/admin/orders', label: 'Orders', icon: <ShoppingBag className="size-4" /> },
-  { href: '/admin/users', label: 'Users', icon: <Users className="size-4" /> },
-  { href: '/admin/roles', label: 'Roles', icon: <ShieldCheck className="size-4" /> },
-  { href: '/admin/resources', label: 'Permissions', icon: <KeyRound className="size-4" /> },
-  { href: '/admin/settings', label: 'Settings', icon: <Settings className="size-4" /> },
+type NavEntry =
+  | { type: 'link'; href: Route; label: string; icon: ReactNode }
+  | { type: 'section'; label: string; icon: ReactNode; children: NavLeaf[] };
+
+interface NavGroup {
+  heading: string;
+  entries: NavEntry[];
+}
+
+const NAV: NavGroup[] = [
+  {
+    heading: 'Tổng quan',
+    entries: [
+      { type: 'link', href: '/admin', label: 'Tổng quan', icon: <LayoutDashboard className="size-4" /> },
+    ],
+  },
+  {
+    heading: 'Vận hành cốt lõi',
+    entries: [
+      {
+        type: 'section',
+        label: 'Đơn hàng',
+        icon: <ShoppingBag className="size-4" />,
+        children: [
+          { href: '/admin/orders', label: 'Tất cả đơn hàng' },
+          { href: '/admin/orders/processing', label: 'Chờ xử lý / Chuẩn bị hàng' },
+          { href: '/admin/orders/shipping', label: 'Đang giao / Hoàn thành' },
+          { href: '/admin/orders/returns', label: 'Trả hàng / Hoàn tiền' },
+        ],
+      },
+      {
+        type: 'section',
+        label: 'Sản phẩm',
+        icon: <Box className="size-4" />,
+        children: [
+          { href: '/admin/products', label: 'Danh sách sản phẩm' },
+          { href: '/admin/products/new', label: 'Thêm sản phẩm mới' },
+          { href: '/admin/categories', label: 'Danh mục & Thương hiệu' },
+          { href: '/admin/inventory', label: 'Quản lý kho' },
+        ],
+      },
+      {
+        type: 'section',
+        label: 'Khách hàng',
+        icon: <Users className="size-4" />,
+        children: [
+          { href: '/admin/customers', label: 'Danh sách khách hàng' },
+          { href: '/admin/customers/groups', label: 'Nhóm khách hàng' },
+          { href: '/admin/reviews', label: 'Đánh giá & Phản hồi' },
+        ],
+      },
+    ],
+  },
+  {
+    heading: 'Phát triển kinh doanh',
+    entries: [
+      {
+        type: 'section',
+        label: 'Marketing',
+        icon: <Megaphone className="size-4" />,
+        children: [
+          { href: '/admin/marketing/coupons', label: 'Mã giảm giá' },
+          { href: '/admin/marketing/promotions', label: 'Chương trình khuyến mãi' },
+        ],
+      },
+      {
+        type: 'section',
+        label: 'Báo cáo & Phân tích',
+        icon: <BarChart3 className="size-4" />,
+        children: [
+          { href: '/admin/analytics/sales', label: 'Báo cáo doanh thu' },
+          { href: '/admin/analytics/behavior', label: 'Hành vi khách hàng' },
+          { href: '/admin/analytics/products', label: 'Hiệu suất sản phẩm' },
+        ],
+      },
+    ],
+  },
+  {
+    heading: 'Cấu hình & Hệ thống',
+    entries: [
+      {
+        type: 'section',
+        label: 'Người dùng & Phân quyền',
+        icon: <ShieldCheck className="size-4" />,
+        children: [
+          { href: '/admin/users', label: 'Danh sách nhân viên' },
+          { href: '/admin/roles', label: 'Vai trò' },
+          { href: '/admin/resources', label: 'Phân quyền' },
+        ],
+      },
+      {
+        type: 'section',
+        label: 'Cấu hình hệ thống',
+        icon: <Settings className="size-4" />,
+        children: [
+          { href: '/admin/settings/payments', label: 'Cổng thanh toán' },
+          { href: '/admin/settings/shipping', label: 'Đơn vị vận chuyển' },
+          { href: '/admin/settings', label: 'Cài đặt chung' },
+        ],
+      },
+    ],
+  },
+  {
+    heading: 'Nội dung',
+    entries: [
+      { type: 'link', href: '/admin/pages', label: 'Trang', icon: <FileText className="size-4" /> },
+      { type: 'link', href: '/admin/block-templates', label: 'Mẫu khối', icon: <LayoutTemplate className="size-4" /> },
+      { type: 'link', href: '/admin/menus', label: 'Menu', icon: <ListTree className="size-4" /> },
+      { type: 'link', href: '/admin/banners', label: 'Banner', icon: <ImageIcon className="size-4" /> },
+      { type: 'link', href: '/admin/tags', label: 'Thẻ', icon: <Tag className="size-4" /> },
+    ],
+  },
 ];
+
+/** All leaf hrefs, flattened — used to resolve the single active route. */
+const ALL_HREFS: Route[] = NAV.flatMap((group) =>
+  group.entries.flatMap((entry) =>
+    entry.type === 'link' ? [entry.href] : entry.children.map((c) => c.href),
+  ),
+);
+
+/**
+ * The active route is the leaf whose href is the longest prefix of the current
+ * path. Longest-match avoids double-highlighting when one href is a prefix of
+ * another (e.g. `/admin/settings` vs `/admin/settings/payments`).
+ */
+function activeHrefFor(pathname: string | null): Route | null {
+  if (!pathname) return null;
+  let best: Route | null = null;
+  for (const href of ALL_HREFS) {
+    if (pathname === href || pathname.startsWith(`${href}/`)) {
+      if (!best || href.length > best.length) best = href;
+    }
+  }
+  return best;
+}
 
 export function AdminShell({ children }: { children: ReactNode }) {
   return (
@@ -83,29 +203,124 @@ function DesktopSidebar() {
         <div className="size-7 rounded-md bg-primary" />
         <span className="text-sm font-semibold">Ecom CMS</span>
       </div>
-      <nav className="flex-1 space-y-1 p-3">
-        {NAV.map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-        ))}
+      <nav className="flex-1 overflow-y-auto p-3">
+        <SidebarNav pathname={pathname} />
       </nav>
       <div className="p-3 text-xs text-muted-foreground">v0.1.0</div>
     </aside>
   );
 }
 
-function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+function SidebarNav({ pathname, onNavigate }: { pathname: string | null; onNavigate?: () => void }) {
+  const active = activeHrefFor(pathname);
+  return (
+    <div className="space-y-4">
+      {NAV.map((group) => (
+        <div key={group.heading} className="space-y-1">
+          <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+            {group.heading}
+          </p>
+          {group.entries.map((entry) =>
+            entry.type === 'link' ? (
+              <NavLink
+                key={entry.href}
+                href={entry.href}
+                label={entry.label}
+                icon={entry.icon}
+                active={active === entry.href}
+                onNavigate={onNavigate}
+              />
+            ) : (
+              <NavSection key={entry.label} entry={entry} active={active} onNavigate={onNavigate} />
+            ),
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NavSection({
+  entry,
+  active,
+  onNavigate,
+}: {
+  entry: Extract<NavEntry, { type: 'section' }>;
+  active: Route | null;
+  onNavigate?: () => void;
+}) {
+  const containsActive = entry.children.some((c) => c.href === active);
+  const [open, setOpen] = useState(containsActive);
+
+  // Keep the section expanded whenever navigation lands on one of its children.
+  useEffect(() => {
+    if (containsActive) setOpen(true);
+  }, [containsActive]);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={cn(
+          'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+          containsActive
+            ? 'text-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+        )}
+      >
+        {entry.icon}
+        <span className="flex-1 text-left">{entry.label}</span>
+        <ChevronDown className={cn('size-3.5 opacity-60 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open ? (
+        <div className="mt-1 space-y-1 border-l border-border pl-3 ml-4">
+          {entry.children.map((child) => (
+            <NavLink
+              key={child.href}
+              href={child.href}
+              label={child.label}
+              active={active === child.href}
+              onNavigate={onNavigate}
+              nested
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function NavLink({
+  href,
+  label,
+  icon,
+  active,
+  nested,
+  onNavigate,
+}: {
+  href: Route;
+  label: string;
+  icon?: ReactNode;
+  active: boolean;
+  nested?: boolean;
+  onNavigate?: () => void;
+}) {
   return (
     <Link
-      href={item.href}
+      href={href}
+      onClick={onNavigate}
       className={cn(
-        'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+        'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+        nested ? 'font-normal' : 'font-medium',
         active
           ? 'bg-accent text-accent-foreground'
           : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
       )}
     >
-      {item.icon}
-      {item.label}
+      {icon}
+      {label}
     </Link>
   );
 }
@@ -136,14 +351,8 @@ function MobileMenu() {
           <div className="size-7 rounded-md bg-primary" />
           <span className="text-sm font-semibold">Ecom CMS</span>
         </div>
-        <nav className="space-y-1 p-3">
-          {NAV.map((item) => (
-            <NavLink
-              key={item.href}
-              item={item}
-              active={isActive(pathname, item.href)}
-            />
-          ))}
+        <nav className="overflow-y-auto p-3">
+          <SidebarNav pathname={pathname} onNavigate={() => setOpen(false)} />
         </nav>
       </SheetContent>
     </Sheet>
@@ -188,8 +397,3 @@ function UserMenu() {
   );
 }
 
-function isActive(pathname: string | null, href: Route) {
-  if (!pathname) return false;
-  if (href === '/admin') return pathname === '/admin';
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
