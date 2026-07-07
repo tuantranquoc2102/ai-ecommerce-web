@@ -28,6 +28,20 @@ export class PagesService {
         orderBy: { updatedAt: 'desc' },
         skip,
         take: query.pageSize,
+        ...(query.includeLayout
+          ? {}
+          : {
+              select: {
+                id: true,
+                title: true,
+                slug: true,
+                seoTitle: true,
+                seoDesc: true,
+                status: true,
+                publishedAt: true,
+                updatedAt: true,
+              },
+            }),
       }),
       this.prisma.page.count({ where }),
     ]);

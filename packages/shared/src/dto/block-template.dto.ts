@@ -17,6 +17,8 @@ export type UpdateBlockTemplateDto = z.infer<typeof UpdateBlockTemplateDto>;
 export const ListBlockTemplatesQuery = z.object({
   blockType: emptyToUndef(z.string().max(80).optional()),
   search: emptyToUndef(z.string().trim().max(200).optional()),
+  // Defaults true for backward compatibility; list pages can disable to slim payload.
+  includeConfig: z.coerce.boolean().default(true),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),
 });

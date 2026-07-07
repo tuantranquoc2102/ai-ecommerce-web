@@ -1,7 +1,8 @@
 'use client';
 
 import { Ellipsis, LayoutTemplate, Plus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useEffect, useRef, useState } from 'react';
 import { BLOCK_SCHEMAS, buildDefaultConfig, findBlockSchema } from '@ecom/shared';
 import {
   Alert,
@@ -36,20 +37,30 @@ import {
 } from '@ecom/ui';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { revalidateStorefront } from '@/lib/revalidate';
-import { PropertyEditor } from '@/components/cms/property-editor';
-import { BlockPreview } from '@/components/cms/block-preview';
 
-type BlockTemplate = {
+const PropertyEditor = dynamic(
+  () => import('@/components/cms/property-editor').then((m) => m.PropertyEditor),
+  { ssr: false },
+);
+const BlockPreview = dynamic(
+  () => import('@/components/cms/block-preview').then((m) => m.BlockPreview),
+  { ssr: false },
+);
+
+type BlockTemplateSummary = {
   id: string;
   name: string;
   blockType: string;
-  config: Record<string, unknown>;
   previewImage: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-type ListResponse = { items: BlockTemplate[]; total: number; page: number; pageSize: number };
+type BlockTemplateDetail = BlockTemplateSummary & {
+  config: Record<string, unknown>;
+};
+
+type ListResponse = { items: BlockTemplateSummary[]; total: number; page: number; pageSize: number };
 
 const CATEGORIES = [
   { key: 'All', types: BLOCK_SCHEMAS.map((s) => s.blockType) },
@@ -62,10 +73,11 @@ const CATEGORIES = [
 
 export default function BlockTemplatesPage() {
   const { toast } = useToast();
-  const [items, setItems] = useState<BlockTemplate[]>([]);
+  const [items, setItems] = useState<BlockTemplateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [editing, setEditing] = useState<BlockTemplate | null>(null);
+  const [editing, setEditing] = useState<BlockTemplateDetail | null>(null);
+  const [detailCache, setDetailCache] = useState<Record<string, BlockTemplateDetail>>({});
   const [creating, setCreating] = useState<string | null>(null); // holds the blockType being created
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('All');
@@ -75,7 +87,7 @@ export default function BlockTemplatesPage() {
     setLoading(true);
     setErr(null);
     try {
-      const r = await apiFetch<ListResponse>('/block-templates?pageSize=200');
+      const r = await apiFetch<ListResponse>('/block-templates?pageSize=200&includeConfig=false');
       setItems(r.items);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : (e as Error).message);
@@ -88,7 +100,34 @@ export default function BlockTemplatesPage() {
     load();
   }, []);
 
-  async function handleDelete(t: BlockTemplate) {
+  async function openEdit(row: BlockTemplateSummary) {
+    try {
+      const cached = detailCache[row.id];
+      const full = cached ?? (await apiFetch<BlockTemplateDetail>(`/block-templates/${row.id}`));
+      setDetailCache((prev) => ({ ...prev, [row.id]: full }));
+      setEditing(full);
+    } catch (e) {
+      toast({
+        title: 'Load template failed',
+        description: (e as Error).message,
+        variant: 'destructive',
+      });
+    }
+  }
+
+  async function ensureDetail(id: string): Promise<BlockTemplateDetail | null> {
+    const cached = detailCache[id];
+    if (cached) return cached;
+    try {
+      const full = await apiFetch<BlockTemplateDetail>(`/block-templates/${id}`);
+      setDetailCache((prev) => ({ ...prev, [id]: full }));
+      return full;
+    } catch {
+      return null;
+    }
+  }
+
+  async function handleDelete(t: BlockTemplateSummary) {
     try {
       await apiFetch<null>(`/block-templates/${t.id}`, { method: 'DELETE' });
       toast({ title: `"${t.name}" deleted`, variant: 'success' });
@@ -177,16 +216,11 @@ export default function BlockTemplatesPage() {
             const schema = findBlockSchema(t.blockType);
             return (
               <Card key={t.id} className="overflow-hidden">
-                {t.previewImage ? (
-                  <div className="aspect-video bg-muted">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={t.previewImage} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  </div>
-                ) : (
-                  <div className="h-40 overflow-hidden border-b">
-                    <BlockPreview type={t.blockType} props={t.config} compact />
-                  </div>
-                )}
+                <TemplateCardPreview
+                  template={t}
+                  detail={detailCache[t.id]}
+                  onNeedDetail={ensureDetail}
+                />
                 <div className="p-4">
                   <div className="mb-1 flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -202,7 +236,7 @@ export default function BlockTemplatesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditing(t)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => void openEdit(t)}>Edit</DropdownMenuItem>
                         <ConfirmDialog
                           trigger={
                             <DropdownMenuItem
@@ -260,6 +294,65 @@ export default function BlockTemplatesPage() {
   );
 }
 
+function TemplateCardPreview({
+  template,
+  detail,
+  onNeedDetail,
+}: {
+  template: BlockTemplateSummary;
+  detail?: BlockTemplateDetail;
+  onNeedDetail: (id: string) => Promise<BlockTemplateDetail | null>;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  useEffect(() => {
+    if (template.previewImage || detail) return;
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting || loadingDetail) return;
+        setLoadingDetail(true);
+        void onNeedDetail(template.id).finally(() => setLoadingDetail(false));
+        observer.disconnect();
+      },
+      { rootMargin: '160px' },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [template.id, template.previewImage, detail, onNeedDetail, loadingDetail]);
+
+  if (template.previewImage) {
+    return (
+      <div className="aspect-video bg-muted" ref={ref}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={template.previewImage} alt="" className="h-full w-full object-cover" loading="lazy" />
+      </div>
+    );
+  }
+
+  if (detail) {
+    return (
+      <div className="h-40 overflow-hidden border-b" ref={ref}>
+        <BlockPreview type={template.blockType} props={detail.config} compact />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="flex h-40 items-center justify-center border-b bg-muted/30 text-xs text-muted-foreground"
+    >
+      {loadingDetail ? 'Loading preview…' : 'No preview image'}
+    </div>
+  );
+}
+
 function BlockTypePaletteSheet({
   open,
   onOpenChange,
@@ -305,7 +398,7 @@ function TemplateEditorSheet({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  initial: BlockTemplate | null;
+  initial: BlockTemplateDetail | null;
   initialBlockType: string | null;
   onSaved: () => void;
 }) {
@@ -396,6 +489,18 @@ function TemplateEditorSheet({
               placeholder='e.g. "Summer Hero 2026"'
               autoFocus
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Preview image URL (optional)</label>
+            <Input
+              value={previewImage}
+              onChange={(e) => setPreviewImage(e.target.value)}
+              placeholder="https://cdn.example.com/template-preview.jpg"
+            />
+            <p className="text-xs text-muted-foreground">
+              If provided, list view loads this image first for the fastest preview.
+            </p>
           </div>
 
           <div className="space-y-1.5">

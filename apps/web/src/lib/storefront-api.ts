@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import type {
   ApiResponse,
   CategoryTreeNode,
@@ -51,11 +52,11 @@ export interface PublicPage {
   publishedAt: string | null;
 }
 
-export function getPageBySlug(slug: string) {
+export const getPageBySlug = cache((slug: string) => {
   return serverFetch<PublicPage>(`/pages/by-slug/${encodeURIComponent(slug)}`, {
     tags: ['pages', `page:${slug}`],
   });
-}
+});
 
 // ---------------------------------------------------------------------------
 // Menus
@@ -68,12 +69,12 @@ export interface PublicMenu {
   hierarchyJson: MenuItem[] | null;
 }
 
-export function getMenusByPosition(position: MenuPosition) {
+export const getMenusByPosition = cache((position: MenuPosition) => {
   return serverFetch<PublicMenu[]>(
     `/menus/public/${position}`,
     { tags: ['menus', `menu:${position}`] },
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Banners
@@ -88,12 +89,12 @@ export interface PublicBanner {
   sortOrder: number;
 }
 
-export function getActiveBanners(position: string) {
+export const getActiveBanners = cache((position: string) => {
   return serverFetch<PublicBanner[]>(
     `/banners/active/${encodeURIComponent(position)}`,
     { tags: ['banners', `banner:${position}`], revalidate: 30 },
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Products
@@ -123,6 +124,10 @@ export interface PublicProductList {
   pageSize: number;
 }
 
+const listPublicProductsCached = cache((qs: string) =>
+  serverFetch<PublicProductList>(`/products/public/list?${qs}`, { tags: ['products'] }),
+);
+
 export function listPublicProducts(params: {
   categoryId?: string;
   tagId?: string;
@@ -147,9 +152,7 @@ export function listPublicProducts(params: {
   if (params.page) qs.set('page', String(params.page));
   if (params.sortBy) qs.set('sortBy', params.sortBy);
   if (params.sortDir) qs.set('sortDir', params.sortDir);
-  return serverFetch<PublicProductList>(`/products/public/list?${qs.toString()}`, {
-    tags: ['products'],
-  });
+  return listPublicProductsCached(qs.toString());
 }
 
 export interface PublicTag {
@@ -159,16 +162,16 @@ export interface PublicTag {
   productCount: number;
 }
 
-export function getPublicTags() {
-  return serverFetch<PublicTag[]>('/tags/public/list', { tags: ['tags'] });
-}
+export const getPublicTags = cache(() =>
+  serverFetch<PublicTag[]>('/tags/public/list', { tags: ['tags'] }),
+);
 
-export function getProductBySlug(slug: string) {
+export const getProductBySlug = cache((slug: string) => {
   return serverFetch<PublicProduct>(
     `/products/by-slug/${encodeURIComponent(slug)}`,
     { tags: ['products', `product:${slug}`] },
   );
-}
+});
 
 /**
  * Public batch lookup by product IDs. Hits `/products/public/by-ids` (Public,
@@ -178,14 +181,17 @@ export function getProductBySlug(slug: string) {
  * sequence the editor picked. Placeholder ids like "REPLACE_1" are dropped
  * cleanly so pages with unfinished templates don't 500.
  */
+const getProductsByIdsCached = cache((idsCsv: string) =>
+  serverFetch<PublicProduct[]>(`/products/public/by-ids?ids=${encodeURIComponent(idsCsv)}`, {
+    tags: ['products'],
+  }),
+);
+
 export async function getProductsByIds(ids: string[]): Promise<Array<PublicProduct | null>> {
   const cleaned = Array.from(new Set(ids.filter((id) => id && !id.startsWith('REPLACE'))));
   if (cleaned.length === 0) return ids.map(() => null);
 
-  const qs = encodeURIComponent(cleaned.join(','));
-  const result = await serverFetch<PublicProduct[]>(`/products/public/by-ids?ids=${qs}`, {
-    tags: ['products'],
-  });
+  const result = await getProductsByIdsCached(cleaned.join(','));
   const list = result ?? [];
   const byId = new Map(list.map((p) => [p.id, p] as const));
   return ids.map((id) => byId.get(id) ?? null);
@@ -195,11 +201,11 @@ export async function getProductsByIds(ids: string[]): Promise<Array<PublicProdu
 // Categories
 // ---------------------------------------------------------------------------
 
-export function getCategoryTree() {
+export const getCategoryTree = cache(() => {
   return serverFetch<CategoryTreeNode[]>('/categories/public/tree', {
     tags: ['categories'],
   });
-}
+});
 
 export interface PublicCategoryDetail {
   id: string;
@@ -220,9 +226,9 @@ export interface PublicCategoryDetail {
   }>;
 }
 
-export function getCategoryBySlug(slug: string) {
+export const getCategoryBySlug = cache((slug: string) => {
   return serverFetch<PublicCategoryDetail>(
     `/categories/by-slug/${encodeURIComponent(slug)}`,
     { tags: ['categories', `category:${slug}`] },
   );
-}
+});

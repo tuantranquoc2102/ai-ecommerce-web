@@ -43,6 +43,8 @@ export type UpdatePageDto = z.infer<typeof UpdatePageDto>;
 export const ListPagesQuery = z.object({
   search: emptyToUndef(z.string().trim().max(200).optional()),
   status: emptyToUndef(PageStatus.optional()),
+  // Keeps backward compatibility for existing callers that expect layoutJson.
+  includeLayout: z.coerce.boolean().default(true),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(20),
 });

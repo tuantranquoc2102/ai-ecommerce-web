@@ -20,6 +20,9 @@ export class ProductsService {
   async list(query: ListProductsQuery) {
     const tagIds = collectTagIds(query.tagId, query.tagIds);
     const priceFilter = buildPriceFilter(query.minPrice, query.maxPrice);
+    const categoryFilterIds = query.categoryId
+      ? await this.collectDescendantCategoryIds(query.categoryId)
+      : [];
 
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
@@ -34,8 +37,8 @@ export class ProductsService {
             ],
           }
         : {}),
-      ...(query.categoryId
-        ? { productCategories: { some: { categoryId: query.categoryId } } }
+      ...(categoryFilterIds.length
+        ? { productCategories: { some: { categoryId: { in: categoryFilterIds } } } }
         : {}),
       ...(tagIds.length ? { productTags: { some: { tagId: { in: tagIds } } } } : {}),
       ...(priceFilter ? { basePrice: priceFilter } : {}),
@@ -131,7 +134,8 @@ export class ProductsService {
       throw new ConflictException({ code: 'PRODUCT_EXISTS', message: 'Slug already in use' });
     }
 
-    await this.assertCategoriesExist(input.categoryIds);
+    const categoryIds = await this.normalizeCategoryIdsWithAncestors(input.categoryIds);
+    await this.assertCategoriesExist(categoryIds);
     await this.assertTagsExist(input.tagIds);
 
     return this.prisma.product.create({
@@ -151,8 +155,8 @@ export class ProductsService {
         widthMm: input.widthMm ?? null,
         heightMm: input.heightMm ?? null,
         status: input.status,
-        productCategories: input.categoryIds?.length
-          ? { create: input.categoryIds.map((categoryId) => ({ categoryId })) }
+        productCategories: categoryIds?.length
+          ? { create: categoryIds.map((categoryId) => ({ categoryId })) }
           : undefined,
         productTags: input.tagIds?.length
           ? { create: input.tagIds.map((tagId) => ({ tagId })) }
@@ -193,7 +197,8 @@ export class ProductsService {
       }
     }
 
-    await this.assertCategoriesExist(input.categoryIds);
+    const categoryIds = await this.normalizeCategoryIdsWithAncestors(input.categoryIds);
+    await this.assertCategoriesExist(categoryIds);
     await this.assertTagsExist(input.tagIds);
 
     return this.prisma.$transaction(async (tx) => {
@@ -220,11 +225,11 @@ export class ProductsService {
 
       await tx.product.update({ where: { id }, data });
 
-      if (input.categoryIds !== undefined) {
+      if (categoryIds !== undefined) {
         await tx.productCategory.deleteMany({ where: { productId: id } });
-        if (input.categoryIds.length > 0) {
+        if (categoryIds.length > 0) {
           await tx.productCategory.createMany({
-            data: input.categoryIds.map((categoryId) => ({ productId: id, categoryId })),
+            data: categoryIds.map((categoryId) => ({ productId: id, categoryId })),
             skipDuplicates: true,
           });
         }
@@ -288,6 +293,61 @@ export class ProductsService {
         message: 'One or more tagIds do not exist',
       });
     }
+  }
+
+  /**
+   * Category filter semantics for storefront: selecting a parent category
+   * should include products from all descendants as well.
+   */
+  private async collectDescendantCategoryIds(rootId: string): Promise<string[]> {
+    const out = new Set<string>([rootId]);
+    let frontier = [rootId];
+
+    while (frontier.length > 0) {
+      const children = await this.prisma.category.findMany({
+        where: { parentId: { in: frontier } },
+        select: { id: true },
+      });
+      const next: string[] = [];
+      for (const child of children) {
+        if (out.has(child.id)) continue;
+        out.add(child.id);
+        next.push(child.id);
+      }
+      frontier = next;
+    }
+
+    return Array.from(out);
+  }
+
+  /**
+   * Data consistency: when a child category is assigned to a product, include
+   * all ancestor categories too so parent views stay complete.
+   */
+  private async normalizeCategoryIdsWithAncestors(
+    ids: string[] | undefined,
+  ): Promise<string[] | undefined> {
+    if (!ids?.length) return ids;
+
+    const out = new Set(ids);
+    let frontier = Array.from(out);
+    while (frontier.length > 0) {
+      const rows = await this.prisma.category.findMany({
+        where: { id: { in: frontier } },
+        select: { id: true, parentId: true },
+      });
+
+      const nextParents = new Set<string>();
+      for (const row of rows) {
+        if (row.parentId && !out.has(row.parentId)) {
+          out.add(row.parentId);
+          nextParents.add(row.parentId);
+        }
+      }
+      frontier = Array.from(nextParents);
+    }
+
+    return Array.from(out);
   }
 }
 
