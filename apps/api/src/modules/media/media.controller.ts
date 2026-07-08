@@ -14,10 +14,20 @@ import { MediaService } from './media.service';
 /** Whitelisted image MIME types. Extend cautiously — svg is intentionally excluded (XSS risk). */
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
 
-/** Whitelisted subfolders. Prevents callers from writing to arbitrary S3 prefixes. */
-const ALLOWED_FOLDERS = new Set(['products', 'categories', 'users', 'banners', 'posts']);
+/** Image subfolders — restricted to the image MIME whitelist + a small size cap. */
+const IMAGE_FOLDERS = new Set(['products', 'categories', 'users', 'banners', 'posts']);
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+/**
+ * Digital-deliverable subfolder. Accepts any content type (software, archives,
+ * PDFs, keys, …) up to a larger size cap. Kept separate from image folders so a
+ * misconfigured image field can never accept arbitrary binaries.
+ */
+const DIGITAL_FOLDER = 'digital';
+
+const ALLOWED_FOLDERS = new Set([...IMAGE_FOLDERS, DIGITAL_FOLDER]);
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_DIGITAL_BYTES = 50 * 1024 * 1024; // 50 MB
 
 interface FastifyRequestWithMultipart extends FastifyRequest {
   file(options?: unknown): Promise<MultipartFile | undefined>;
@@ -50,7 +60,10 @@ export class MediaController {
       });
     }
 
-    const file = await req.file({ limits: { fileSize: MAX_BYTES } });
+    const isDigital = folder === DIGITAL_FOLDER;
+    const maxBytes = isDigital ? MAX_DIGITAL_BYTES : MAX_IMAGE_BYTES;
+
+    const file = await req.file({ limits: { fileSize: maxBytes } });
     if (!file) {
       throw new BadRequestException({
         code: 'NO_FILE',
@@ -58,7 +71,9 @@ export class MediaController {
       });
     }
 
-    if (!ALLOWED_MIME.has(file.mimetype)) {
+    // Image folders are restricted to the image whitelist; the digital folder
+    // accepts any content type.
+    if (!isDigital && !ALLOWED_MIME.has(file.mimetype)) {
       throw new BadRequestException({
         code: 'INVALID_MIME',
         message: `Content-Type '${file.mimetype}' not allowed. Allowed: ${Array.from(ALLOWED_MIME).join(', ')}`,
@@ -73,7 +88,7 @@ export class MediaController {
       if (file.file.truncated) {
         throw new BadRequestException({
           code: 'FILE_TOO_LARGE',
-          message: `File exceeds ${Math.round(MAX_BYTES / 1024 / 1024)} MB limit`,
+          message: `File exceeds ${Math.round(maxBytes / 1024 / 1024)} MB limit`,
         });
       }
       throw new BadRequestException({
@@ -82,7 +97,7 @@ export class MediaController {
       });
     }
 
-    return this.media.uploadImage({
+    return this.media.uploadObject({
       folder,
       filename: file.filename,
       contentType: file.mimetype,

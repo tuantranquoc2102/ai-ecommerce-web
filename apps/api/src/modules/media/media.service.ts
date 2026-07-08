@@ -74,13 +74,13 @@ export class MediaService implements OnModuleInit {
   }
 
   /**
-   * Upload a single image to S3 and return its public URL.
-   *   folder — logical subdirectory (e.g. 'products', 'categories')
+   * Upload a single object (image or digital file) to S3 and return its public URL.
+   *   folder — logical subdirectory (e.g. 'products', 'categories', 'digital')
    *   filename — original client-side filename, used only for the extension
    *   contentType — validated by controller before calling
    *   body — raw bytes
    */
-  async uploadImage(input: {
+  async uploadObject(input: {
     folder: string;
     filename: string;
     contentType: string;

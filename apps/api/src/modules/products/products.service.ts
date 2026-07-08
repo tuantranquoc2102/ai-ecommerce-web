@@ -13,6 +13,35 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { toSlug } from '../../common/slug';
 
+type TxClient = Prisma.TransactionClient;
+
+/** Rich include used by single-product reads/writes so callers get the full editor payload. */
+const productDetailInclude = {
+  productCategories: { include: { category: true } },
+  productTags: { include: { tag: true } },
+  attributes: { include: { values: true } },
+  variants: {
+    include: {
+      values: { include: { attributeValue: { include: { attribute: true } } } },
+    },
+  },
+  digitalAssets: true,
+  relatedProducts: {
+    include: {
+      relatedProduct: {
+        select: { id: true, title: true, slug: true, mainImage: true, basePrice: true, type: true },
+      },
+    },
+  },
+  comboItems: {
+    include: {
+      comboProduct: {
+        select: { id: true, title: true, slug: true, mainImage: true, basePrice: true, type: true },
+      },
+    },
+  },
+} satisfies Prisma.ProductInclude;
+
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -66,10 +95,7 @@ export class ProductsService {
   async findById(id: string) {
     const product = await this.prisma.product.findFirst({
       where: { id, deletedAt: null },
-      include: {
-        productCategories: { include: { category: true } },
-        productTags: { include: { tag: true } },
-      },
+      include: productDetailInclude,
     });
     if (!product) {
       throw new NotFoundException({ code: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
@@ -137,35 +163,50 @@ export class ProductsService {
     const categoryIds = await this.normalizeCategoryIdsWithAncestors(input.categoryIds);
     await this.assertCategoriesExist(categoryIds);
     await this.assertTagsExist(input.tagIds);
+    const relatedProductIds = dedupe(input.relatedProductIds);
+    const comboProductIds = dedupe(input.comboProductIds);
+    await this.assertProductsExist([...relatedProductIds, ...comboProductIds]);
+    await this.assertSkusAvailable((input.variants ?? []).map((v) => v.sku));
 
-    return this.prisma.product.create({
-      data: {
-        title: input.title,
-        slug,
-        description: input.description ?? null,
-        mainImage: input.mainImage ?? null,
-        galleryImages: input.galleryImages ? (input.galleryImages as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        type: input.type,
-        digitalType: input.digitalType ?? null,
-        basePrice: input.basePrice,
-        salePrice: input.salePrice ?? null,
-        stockQuantity: input.stockQuantity,
-        weightGrams: input.weightGrams ?? null,
-        lengthMm: input.lengthMm ?? null,
-        widthMm: input.widthMm ?? null,
-        heightMm: input.heightMm ?? null,
-        status: input.status,
-        productCategories: categoryIds?.length
-          ? { create: categoryIds.map((categoryId) => ({ categoryId })) }
-          : undefined,
-        productTags: input.tagIds?.length
-          ? { create: input.tagIds.map((tagId) => ({ tagId })) }
-          : undefined,
-      },
-      include: {
-        productCategories: { include: { category: true } },
-        productTags: { include: { tag: true } },
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          title: input.title,
+          slug,
+          description: input.description ?? null,
+          mainImage: input.mainImage ?? null,
+          galleryImages: input.galleryImages ? (input.galleryImages as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+          type: input.type,
+          digitalType: input.digitalType ?? null,
+          basePrice: input.basePrice,
+          salePrice: input.salePrice ?? null,
+          stockQuantity: input.stockQuantity,
+          weightGrams: input.weightGrams ?? null,
+          lengthMm: input.lengthMm ?? null,
+          widthMm: input.widthMm ?? null,
+          heightMm: input.heightMm ?? null,
+          status: input.status,
+          productCategories: categoryIds?.length
+            ? { create: categoryIds.map((categoryId) => ({ categoryId })) }
+            : undefined,
+          productTags: input.tagIds?.length
+            ? { create: input.tagIds.map((tagId) => ({ tagId })) }
+            : undefined,
+          digitalAssets: input.digitalAssets?.length
+            ? { create: input.digitalAssets.map(toDigitalAssetData) }
+            : undefined,
+          relatedProducts: relatedProductIds.length
+            ? { create: relatedProductIds.map((relatedProductId) => ({ relatedProductId })) }
+            : undefined,
+          comboItems: comboProductIds.length
+            ? { create: comboProductIds.map((comboProductId) => ({ comboProductId })) }
+            : undefined,
+        },
+      });
+
+      await this.writeVariantMatrix(tx, created.id, input.attributes, input.variants);
+
+      return tx.product.findUnique({ where: { id: created.id }, include: productDetailInclude });
     });
   }
 
@@ -200,6 +241,20 @@ export class ProductsService {
     const categoryIds = await this.normalizeCategoryIdsWithAncestors(input.categoryIds);
     await this.assertCategoriesExist(categoryIds);
     await this.assertTagsExist(input.tagIds);
+
+    // A product can never relate to itself.
+    const relatedProductIds =
+      input.relatedProductIds === undefined
+        ? undefined
+        : dedupe(input.relatedProductIds).filter((pid) => pid !== id);
+    const comboProductIds =
+      input.comboProductIds === undefined
+        ? undefined
+        : dedupe(input.comboProductIds).filter((pid) => pid !== id);
+    await this.assertProductsExist([...(relatedProductIds ?? []), ...(comboProductIds ?? [])]);
+    if (input.variants !== undefined) {
+      await this.assertSkusAvailable(input.variants.map((v) => v.sku), id);
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const data: Prisma.ProductUpdateInput = {
@@ -245,13 +300,43 @@ export class ProductsService {
         }
       }
 
-      return tx.product.findUnique({
-        where: { id },
-        include: {
-          productCategories: { include: { category: true } },
-          productTags: { include: { tag: true } },
-        },
-      });
+      if (input.digitalAssets !== undefined) {
+        await tx.digitalAsset.deleteMany({ where: { productId: id } });
+        if (input.digitalAssets.length > 0) {
+          await tx.digitalAsset.createMany({
+            data: input.digitalAssets.map((a) => ({ productId: id, ...toDigitalAssetData(a) })),
+          });
+        }
+      }
+
+      if (relatedProductIds !== undefined) {
+        await tx.productRelation.deleteMany({ where: { productId: id } });
+        if (relatedProductIds.length > 0) {
+          await tx.productRelation.createMany({
+            data: relatedProductIds.map((relatedProductId) => ({ productId: id, relatedProductId })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      if (comboProductIds !== undefined) {
+        await tx.productComboItem.deleteMany({ where: { productId: id } });
+        if (comboProductIds.length > 0) {
+          await tx.productComboItem.createMany({
+            data: comboProductIds.map((comboProductId) => ({ productId: id, comboProductId })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      // Variant matrix is replaced wholesale when either axis is provided.
+      if (input.attributes !== undefined || input.variants !== undefined) {
+        await tx.productVariant.deleteMany({ where: { productId: id } });
+        await tx.productAttribute.deleteMany({ where: { productId: id } });
+        await this.writeVariantMatrix(tx, id, input.attributes, input.variants);
+      }
+
+      return tx.product.findUnique({ where: { id }, include: productDetailInclude });
     });
   }
 
@@ -291,6 +376,95 @@ export class ProductsService {
       throw new BadRequestException({
         code: 'UNKNOWN_TAG',
         message: 'One or more tagIds do not exist',
+      });
+    }
+  }
+
+  private async assertProductsExist(ids: string[]) {
+    const unique = Array.from(new Set(ids));
+    if (unique.length === 0) return;
+    const found = await this.prisma.product.findMany({
+      where: { id: { in: unique }, deletedAt: null },
+      select: { id: true },
+    });
+    if (found.length !== unique.length) {
+      throw new BadRequestException({
+        code: 'UNKNOWN_PRODUCT',
+        message: 'One or more related/combo product ids do not exist',
+      });
+    }
+  }
+
+  private async assertSkusAvailable(skus: string[], excludeProductId?: string) {
+    const unique = Array.from(new Set(skus));
+    if (unique.length === 0) return;
+    const clash = await this.prisma.productVariant.findMany({
+      where: {
+        sku: { in: unique },
+        ...(excludeProductId ? { productId: { not: excludeProductId } } : {}),
+      },
+      select: { sku: true },
+    });
+    if (clash.length > 0) {
+      throw new ConflictException({
+        code: 'SKU_EXISTS',
+        message: `SKU already in use: ${clash.map((c) => c.sku).join(', ')}`,
+      });
+    }
+  }
+
+  /**
+   * Materializes the attribute axes and their SKU variants for a product. Assumes
+   * any pre-existing attributes/variants for the product have already been cleared
+   * (callers run this inside a transaction). No-op when there are no attributes.
+   */
+  private async writeVariantMatrix(
+    tx: TxClient,
+    productId: string,
+    attributes: CreateProductDto['attributes'],
+    variants: CreateProductDto['variants'],
+  ) {
+    if (!attributes?.length) return;
+
+    // attribute name -> (value -> attributeValueId)
+    const valueIdByAttr = new Map<string, Map<string, string>>();
+    for (const attr of attributes) {
+      const createdAttr = await tx.productAttribute.create({
+        data: {
+          productId,
+          name: attr.name,
+          values: { create: attr.values.map((value) => ({ value })) },
+        },
+        include: { values: true },
+      });
+      valueIdByAttr.set(
+        attr.name,
+        new Map(createdAttr.values.map((v) => [v.value, v.id])),
+      );
+    }
+
+    for (const variant of variants ?? []) {
+      const attributeValueIds: string[] = [];
+      for (const [attrName, value] of Object.entries(variant.options)) {
+        const valueId = valueIdByAttr.get(attrName)?.get(value);
+        if (!valueId) {
+          throw new BadRequestException({
+            code: 'INVALID_VARIANT_OPTION',
+            message: `Variant option "${attrName}: ${value}" does not match the defined attributes`,
+          });
+        }
+        attributeValueIds.push(valueId);
+      }
+      await tx.productVariant.create({
+        data: {
+          productId,
+          sku: variant.sku,
+          price: variant.price,
+          salePrice: variant.salePrice ?? null,
+          stockQuantity: variant.stockQuantity,
+          imageUrl: variant.imageUrl ?? null,
+          values: { create: attributeValueIds.map((attributeValueId) => ({ attributeValueId })) },
+        },
       });
     }
   }
@@ -349,6 +523,20 @@ export class ProductsService {
 
     return Array.from(out);
   }
+}
+
+function dedupe(ids: string[] | undefined): string[] {
+  return ids?.length ? Array.from(new Set(ids)) : [];
+}
+
+function toDigitalAssetData(a: NonNullable<CreateProductDto['digitalAssets']>[number]) {
+  return {
+    url: a.url,
+    storageKey: a.storageKey ?? null,
+    fileName: a.fileName,
+    fileSize: a.fileSize,
+    contentType: a.contentType ?? 'application/octet-stream',
+  };
 }
 
 function collectTagIds(single: string | undefined, csv: string | undefined): string[] {
