@@ -197,6 +197,13 @@ model Product {
   digitalAssets     DigitalAsset[]
   serialKeys        SerialKey[]
 
+  // "Related products" curated by the merchant (directional: this product → others).
+  relatedProducts ProductRelation[] @relation("ProductRelationFrom")
+  relatedBy       ProductRelation[] @relation("ProductRelationTo")
+  // "Frequently bought together" combo items (directional: this product → others).
+  comboItems ProductComboItem[] @relation("ProductComboFrom")
+  comboBy    ProductComboItem[] @relation("ProductComboTo")
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -308,17 +315,42 @@ model ProductVariantValue {
 }
 
 model DigitalAsset {
-  id          String  @id @default(cuid())
-  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productId   String
-  storageKey  String
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  // Public/download URL — either a file uploaded to our storage or an external link.
+  url         String
+  // Set only for files uploaded to our own storage (null for external links).
+  storageKey  String?
   fileName    String
-  fileSize    Int
-  contentType String
+  fileSize    Int    @default(0)
+  contentType String @default("application/octet-stream")
 
   createdAt DateTime @default(now())
 
   @@index([productId])
+}
+
+// Directional many-to-many: a product's curated "related products".
+model ProductRelation {
+  product          Product @relation("ProductRelationFrom", fields: [productId], references: [id], onDelete: Cascade)
+  productId        String
+  relatedProduct   Product @relation("ProductRelationTo", fields: [relatedProductId], references: [id], onDelete: Cascade)
+  relatedProductId String
+
+  @@id([productId, relatedProductId])
+  @@index([relatedProductId])
+}
+
+// Directional many-to-many: "frequently bought together" combo items.
+model ProductComboItem {
+  product        Product @relation("ProductComboFrom", fields: [productId], references: [id], onDelete: Cascade)
+  productId      String
+  comboProduct   Product @relation("ProductComboTo", fields: [comboProductId], references: [id], onDelete: Cascade)
+  comboProductId String
+
+  @@id([productId, comboProductId])
+  @@index([comboProductId])
 }
 
 model SerialKey {

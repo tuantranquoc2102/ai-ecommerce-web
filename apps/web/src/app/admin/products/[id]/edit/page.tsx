@@ -3,12 +3,17 @@ import { ArrowLeft } from 'lucide-react';
 import { Button, PageHeader } from '@ecom/ui';
 import { ProductForm } from '@/components/product-form';
 
-export default function ProductCreatePage() {
+export default async function ProductEditPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
-        title="New product"
-        description="Create a physical or digital product for your storefront."
+        title="Edit product"
+        description="Update details, variants, digital deliverables, and merchandising."
         actions={
           <Button variant="outline" asChild>
             <Link href="/admin/products">
@@ -17,7 +22,7 @@ export default function ProductCreatePage() {
           </Button>
         }
       />
-      <ProductForm />
+      <ProductForm productId={id} />
     </div>
   );
 }
