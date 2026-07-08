@@ -3,6 +3,7 @@ import { cache } from 'react';
 import type {
   ApiResponse,
   CategoryTreeNode,
+  FooterConfig,
   MenuItem,
   MenuPosition,
   PageStatus,
@@ -94,6 +95,16 @@ export const getActiveBanners = cache((position: string) => {
     `/banners/active/${encodeURIComponent(position)}`,
     { tags: ['banners', `banner:${position}`], revalidate: 30 },
   );
+});
+
+// ---------------------------------------------------------------------------
+// Site settings
+// ---------------------------------------------------------------------------
+
+export const getFooterConfig = cache(() => {
+  return serverFetch<FooterConfig>('/settings/public/footer', {
+    tags: ['settings', 'settings:footer'],
+  });
 });
 
 // ---------------------------------------------------------------------------

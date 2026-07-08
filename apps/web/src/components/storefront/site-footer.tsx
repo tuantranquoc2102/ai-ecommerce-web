@@ -1,48 +1,65 @@
 import Link from 'next/link';
-import { Facebook, Instagram, Mail, MapPin, Phone, Twitter, Youtube } from 'lucide-react';
+import {
+  Facebook,
+  Globe,
+  Instagram,
+  Linkedin,
+  Mail,
+  MapPin,
+  Phone,
+  Twitter,
+  Youtube,
+  type LucideIcon,
+} from 'lucide-react';
 import { Separator } from '@ecom/ui';
-import type { MenuItem } from '@ecom/shared';
-import { getMenusByPosition } from '@/lib/storefront-api';
+import {
+  DEFAULT_FOOTER_CONFIG,
+  type FooterColumn,
+  type FooterConfig,
+  type SocialLink as SocialLinkData,
+  type SocialPlatform,
+} from '@ecom/shared';
+import { getFooterConfig } from '@/lib/storefront-api';
 import { NewsletterForm } from './blocks/newsletter.client';
 
 /**
- * Storefront footer with 4-column grid:
- *   1. Brand + tagline + newsletter signup
- *   2-3. Two columns from the FOOTER menu (Shop / Help)
- *   4. Contact info + social icons
- *
- * Falls back gracefully when the FOOTER menu isn't configured. All columns
- * are semantically labeled so screen readers can jump between them.
+ * Storefront footer, fully driven by the admin-editable `footer` setting
+ * (Admin → Cấu hình → Footer). Columns, their content, social links, the grid
+ * width and the bottom bar all come from config; falls back to the baseline
+ * layout when the setting hasn't been configured or the API is unreachable.
  */
 export async function SiteFooter() {
-  const menus = (await getMenusByPosition('FOOTER')) ?? [];
-  const items = (menus[0]?.hierarchyJson as MenuItem[] | undefined) ?? [];
+  const config: FooterConfig = (await getFooterConfig()) ?? DEFAULT_FOOTER_CONFIG;
   const year = new Date().getFullYear();
-
-  // First two top-level items become the middle columns. Rest are ignored
-  // to keep the layout consistent regardless of editor structure.
-  const [colA, colB] = items;
+  const gridCols = GRID_COLS[config.columnsPerRow] ?? GRID_COLS[4];
 
   return (
     <footer className="mt-16 border-t bg-muted/30">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-          <BrandColumn />
-          {colA ? <MenuColumn item={colA} /> : <PlaceholderColumn heading="Shop" />}
-          {colB ? <MenuColumn item={colB} /> : <PlaceholderColumn heading="Help" />}
-          <ContactColumn />
+        <div className={`grid gap-8 md:grid-cols-2 ${gridCols}`}>
+          {config.columns.map((col) => (
+            <FooterColumnView key={col.id} col={col} />
+          ))}
         </div>
 
         <Separator className="my-8" />
 
         <div className="flex flex-col items-center justify-between gap-4 text-xs text-muted-foreground sm:flex-row">
-          <p>© {year} Ecom. All rights reserved.</p>
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link href="/terms" className="hover:text-foreground">Terms</Link>
-            <Link href="/privacy" className="hover:text-foreground">Privacy</Link>
-            <Link href="/refund" className="hover:text-foreground">Refund policy</Link>
-            <Link href="/shipping" className="hover:text-foreground">Shipping</Link>
-          </div>
+          <p>{config.bottom.copyright.replace('{year}', String(year))}</p>
+          {config.bottom.links.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              {config.bottom.links.map((l, i) => (
+                <Link
+                  key={i}
+                  href={l.url}
+                  target={l.target}
+                  className="hover:text-foreground"
+                >
+                  {l.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
           <PaymentIcons />
         </div>
       </div>
@@ -50,120 +67,162 @@ export async function SiteFooter() {
   );
 }
 
-function BrandColumn() {
+const GRID_COLS: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+  6: 'lg:grid-cols-6',
+};
+
+function FooterColumnView({ col }: { col: FooterColumn }) {
+  switch (col.type) {
+    case 'brand':
+      return <BrandColumn col={col} />;
+    case 'text':
+      return <TextColumn col={col} />;
+    case 'contact':
+      return <ContactColumn col={col} />;
+    case 'social':
+      return <SocialColumn col={col} />;
+    case 'links':
+    default:
+      return <LinksColumn col={col} />;
+  }
+}
+
+function ColumnHeading({ children }: { children: React.ReactNode }) {
+  if (!children) return null;
+  return <h3 className="mb-3 text-sm font-semibold">{children}</h3>;
+}
+
+function BrandColumn({ col }: { col: FooterColumn }) {
   return (
     <div>
       <div className="flex items-center gap-2 font-semibold">
         <span className="inline-block size-7 rounded-md bg-primary" />
-        <span>Ecom</span>
+        <span>{col.brandName || 'Ecom'}</span>
       </div>
-      <p className="mt-3 text-sm text-muted-foreground">
-        Curated products delivered fast, backed by a 30-day money-back guarantee.
-      </p>
-      <div className="mt-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Get 10% off
-        </h3>
-        <NewsletterForm discountCode="WELCOME10" />
-      </div>
+      {col.brandTagline ? (
+        <p className="mt-3 text-sm text-muted-foreground">{col.brandTagline}</p>
+      ) : null}
+      {col.showNewsletter ? (
+        <div className="mt-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Get 10% off
+          </h3>
+          <NewsletterForm discountCode={col.newsletterDiscountCode || 'WELCOME10'} />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function MenuColumn({ item }: { item: MenuItem }) {
-  const children = Array.isArray(item.children) ? item.children : [];
+function LinksColumn({ col }: { col: FooterColumn }) {
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold">{item.label}</h3>
-      {children.length > 0 ? (
+      <ColumnHeading>{col.title}</ColumnHeading>
+      {col.links.length > 0 ? (
         <ul className="space-y-1.5 text-sm">
-          {children.map((c, i) => (
+          {col.links.map((l, i) => (
             <li key={i}>
               <Link
-                href={c.url}
-                target={c.target ?? '_self'}
+                href={l.url}
+                target={l.target}
                 className="text-muted-foreground hover:text-foreground"
               >
-                {c.label}
+                {l.label}
               </Link>
             </li>
           ))}
         </ul>
-      ) : (
-        <Link
-          href={item.url}
-          target={item.target ?? '_self'}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          {item.label}
-        </Link>
-      )}
+      ) : null}
     </div>
   );
 }
 
-function PlaceholderColumn({ heading }: { heading: string }) {
+function TextColumn({ col }: { col: FooterColumn }) {
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold">{heading}</h3>
-      <p className="text-xs text-muted-foreground">
-        Configure a FOOTER menu with children to fill this column.
-      </p>
+      <ColumnHeading>{col.title}</ColumnHeading>
+      {col.text ? (
+        <p className="whitespace-pre-line text-sm text-muted-foreground">{col.text}</p>
+      ) : null}
     </div>
   );
 }
 
-function ContactColumn() {
+function ContactColumn({ col }: { col: FooterColumn }) {
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold">Get in touch</h3>
+      <ColumnHeading>{col.title || 'Get in touch'}</ColumnHeading>
       <ul className="space-y-2 text-sm text-muted-foreground">
-        <li className="flex items-start gap-2">
-          <Phone className="mt-0.5 size-4 shrink-0" />
-          <a href="tel:+84900000000" className="hover:text-foreground">
-            +84 900 000 000
-          </a>
-        </li>
-        <li className="flex items-start gap-2">
-          <Mail className="mt-0.5 size-4 shrink-0" />
-          <a href="mailto:hello@ecom.local" className="hover:text-foreground">
-            hello@ecom.local
-          </a>
-        </li>
-        <li className="flex items-start gap-2">
-          <MapPin className="mt-0.5 size-4 shrink-0" />
-          <span>Ho Chi Minh City, Vietnam</span>
-        </li>
+        {col.phone ? (
+          <li className="flex items-start gap-2">
+            <Phone className="mt-0.5 size-4 shrink-0" />
+            <a href={`tel:${col.phone.replace(/\s+/g, '')}`} className="hover:text-foreground">
+              {col.phone}
+            </a>
+          </li>
+        ) : null}
+        {col.email ? (
+          <li className="flex items-start gap-2">
+            <Mail className="mt-0.5 size-4 shrink-0" />
+            <a href={`mailto:${col.email}`} className="hover:text-foreground">
+              {col.email}
+            </a>
+          </li>
+        ) : null}
+        {col.address ? (
+          <li className="flex items-start gap-2">
+            <MapPin className="mt-0.5 size-4 shrink-0" />
+            <span>{col.address}</span>
+          </li>
+        ) : null}
       </ul>
-      <div className="mt-5 flex gap-3">
-        <SocialLink href="https://facebook.com" label="Facebook" Icon={Facebook} />
-        <SocialLink href="https://instagram.com" label="Instagram" Icon={Instagram} />
-        <SocialLink href="https://twitter.com" label="Twitter" Icon={Twitter} />
-        <SocialLink href="https://youtube.com" label="YouTube" Icon={Youtube} />
-      </div>
+      {col.socials.length > 0 ? <SocialRow socials={col.socials} className="mt-5" /> : null}
     </div>
   );
 }
 
-function SocialLink({
-  href,
-  label,
-  Icon,
-}: {
-  href: string;
-  label: string;
-  Icon: typeof Facebook;
-}) {
+function SocialColumn({ col }: { col: FooterColumn }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={label}
-      className="flex size-11 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
-    >
-      <Icon className="size-4" />
-    </a>
+    <div>
+      <ColumnHeading>{col.title}</ColumnHeading>
+      <SocialRow socials={col.socials} />
+    </div>
+  );
+}
+
+const SOCIAL_ICONS: Record<SocialPlatform, LucideIcon> = {
+  facebook: Facebook,
+  instagram: Instagram,
+  twitter: Twitter,
+  youtube: Youtube,
+  linkedin: Linkedin,
+  website: Globe,
+};
+
+function SocialRow({ socials, className }: { socials: SocialLinkData[]; className?: string }) {
+  return (
+    <div className={`flex flex-wrap gap-3 ${className ?? ''}`}>
+      {socials.map((s, i) => {
+        const Icon = SOCIAL_ICONS[s.platform] ?? Globe;
+        return (
+          <a
+            key={i}
+            href={s.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={s.platform}
+            className="flex size-11 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+          >
+            <Icon className="size-4" />
+          </a>
+        );
+      })}
+    </div>
   );
 }
 

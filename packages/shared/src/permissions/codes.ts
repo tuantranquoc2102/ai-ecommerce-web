@@ -45,6 +45,9 @@ export const PERM = {
   ORDER_READ: 'order.read',
   ORDER_UPDATE: 'order.update',
   ORDER_REFUND: 'order.refund',
+
+  SETTING_READ: 'setting.read',
+  SETTING_WRITE: 'setting.write',
 } as const;
 
 export type PermissionCode = (typeof PERM)[keyof typeof PERM];

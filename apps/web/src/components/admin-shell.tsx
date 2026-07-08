@@ -141,6 +141,7 @@ const NAV: NavGroup[] = [
         label: 'Cấu hình hệ thống',
         icon: <Settings className="size-4" />,
         children: [
+          { href: '/admin/settings/footer', label: 'Footer' },
           { href: '/admin/settings/payments', label: 'Cổng thanh toán' },
           { href: '/admin/settings/shipping', label: 'Đơn vị vận chuyển' },
           { href: '/admin/settings', label: 'Cài đặt chung' },
