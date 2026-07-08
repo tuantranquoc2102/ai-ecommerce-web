@@ -11,6 +11,7 @@ export * from './dto/order.dto';
 export * from './dto/coupon.dto';
 export * from './dto/payment.dto';
 export * from './dto/cms.dto';
+export * from './dto/settings.dto';
 export * from './dto/block-template.dto';
 export * from './cms/block-schemas';
 export * from './catalog/variant-matrix';

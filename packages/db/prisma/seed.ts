@@ -93,6 +93,10 @@ const PERMISSIONS: PermSeed[] = [
   { code: 'order.update', name: 'Update order status', type: 'API', apiEndpoint: 'PATCH /api/v1/orders/:id' },
   { code: 'order.refund', name: 'Refund order', type: 'API', apiEndpoint: 'POST /api/v1/orders/:id/refund' },
 
+  // API: site settings (footer, general config)
+  { code: 'setting.read', name: 'View site settings', type: 'API', apiEndpoint: 'GET /api/v1/settings/:key' },
+  { code: 'setting.write', name: 'Manage site settings', type: 'API', apiEndpoint: 'PUT /api/v1/settings/:key' },
+
   // UI elements (rendered conditionally on the front-end)
   { code: 'element.user.delete_button', name: 'Show delete-user button', type: 'ELEMENT' },
   { code: 'element.order.refund_button', name: 'Show refund-order button', type: 'ELEMENT' },
@@ -121,6 +125,7 @@ const ROLES: { code: string; name: string; description: string; isSystem: boolea
       'post.read', 'post.write',
       'order.read', 'order.update',
       'element.order.refund_button',
+      'setting.read', 'setting.write',
     ],
   },
   {
