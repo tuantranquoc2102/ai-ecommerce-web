@@ -1,7 +1,8 @@
 'use client';
 
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import type { Route } from 'next';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import {
   Alert,
@@ -9,13 +10,27 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Input,
   Label,
   PageHeader,
   Separator,
+  Textarea,
   useToast,
 } from '@ecom/ui';
-import type { OrderStatus, OrderView, UpdateOrderStatusDto } from '@ecom/shared';
+import type {
+  OrderStatus,
+  OrderView,
+  RefundOrderDto,
+  UpdateOrderStatusDto,
+  UpdateShippingDto,
+} from '@ecom/shared';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { formatVnd } from '@/lib/storefront/format';
 
@@ -59,21 +74,33 @@ export default function AdminOrderDetailPage({
   const [saving, setSaving] = useState<OrderStatus | null>(null);
   const [carrier, setCarrier] = useState('');
   const [trackingCode, setTrackingCode] = useState('');
+  const [savingShipping, setSavingShipping] = useState(false);
+
+  // Refund dialog state.
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundRestock, setRefundRestock] = useState(true);
+  const [refunding, setRefunding] = useState(false);
+
+  const applyOrder = useCallback((result: OrderView) => {
+    setOrder(result);
+    setCarrier(result.shipping?.carrier ?? '');
+    setTrackingCode(result.shipping?.trackingCode ?? '');
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const result = await apiFetch<OrderView>(`/orders/${id}`);
-      setOrder(result);
-      setCarrier(result.shipping?.carrier ?? '');
-      setTrackingCode(result.shipping?.trackingCode ?? '');
+      applyOrder(result);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, applyOrder]);
 
   useEffect(() => {
     load();
@@ -91,7 +118,7 @@ export default function AdminOrderDetailPage({
         method: 'PATCH',
         body: JSON.stringify(body),
       });
-      setOrder(result);
+      applyOrder(result);
       toast({ title: `Order → ${next}`, variant: 'success' });
     } catch (e) {
       toast({
@@ -103,6 +130,69 @@ export default function AdminOrderDetailPage({
       setSaving(null);
     }
   }
+
+  async function saveShipping() {
+    setSavingShipping(true);
+    try {
+      const body: UpdateShippingDto = {
+        carrier: carrier || undefined,
+        trackingCode: trackingCode || undefined,
+      };
+      const result = await apiFetch<OrderView>(`/orders/${id}/shipping`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      applyOrder(result);
+      toast({ title: 'Shipping updated', variant: 'success' });
+    } catch (e) {
+      toast({
+        title: 'Update failed',
+        description: e instanceof ApiError ? e.message : (e as Error).message,
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingShipping(false);
+    }
+  }
+
+  async function submitRefund() {
+    if (!refundReason.trim()) return;
+    setRefunding(true);
+    try {
+      const amount = refundAmount.trim();
+      const body: RefundOrderDto = {
+        reason: refundReason.trim(),
+        restock: refundRestock,
+        ...(amount ? { amount } : {}),
+      };
+      const result = await apiFetch<OrderView>(`/orders/${id}/refund`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      applyOrder(result);
+      toast({ title: 'Order refunded', variant: 'success' });
+      setRefundOpen(false);
+      setRefundReason('');
+      setRefundAmount('');
+      setRefundRestock(true);
+    } catch (e) {
+      toast({
+        title: 'Refund failed',
+        description: e instanceof ApiError ? e.message : (e as Error).message,
+        variant: 'destructive',
+      });
+    } finally {
+      setRefunding(false);
+    }
+  }
+
+  const history = useMemo(
+    () =>
+      (order?.statusHistory ?? [])
+        .slice()
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [order],
+  );
 
   if (loading) {
     return (
@@ -130,6 +220,8 @@ export default function AdminOrderDetailPage({
   }
 
   const nextStates = NEXT_STATES[order.status];
+  const statusTransitions = nextStates.filter((s) => s !== 'REFUNDED');
+  const canRefund = nextStates.includes('REFUNDED');
 
   return (
     <>
@@ -189,7 +281,13 @@ export default function AdminOrderDetailPage({
           </Card>
 
           <Card className="p-5">
-            <h2 className="text-sm font-semibold">Shipping</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Shipping</h2>
+              <Button size="sm" variant="outline" onClick={saveShipping} disabled={savingShipping}>
+                {savingShipping ? <Loader2 className="size-4 animate-spin" /> : null}
+                Save shipping
+              </Button>
+            </div>
             <Separator className="my-3" />
             {order.shipping ? (
               <div className="grid gap-4 sm:grid-cols-2">
@@ -264,6 +362,43 @@ export default function AdminOrderDetailPage({
             )}
           </Card>
 
+          <Card className="p-5">
+            <h2 className="text-sm font-semibold">Status timeline</h2>
+            <Separator className="my-3" />
+            {history.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No status changes recorded.</p>
+            ) : (
+              <ul className="space-y-3">
+                {history.map((h) => (
+                  <li key={h.id} className="flex gap-3 text-sm">
+                    <div className="mt-1.5 size-2 shrink-0 rounded-full bg-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {h.fromStatus ? (
+                          <>
+                            <Badge variant={STATUS_VARIANT[h.fromStatus]} className="text-[10px]">
+                              {h.fromStatus}
+                            </Badge>
+                            <span className="text-muted-foreground">→</span>
+                          </>
+                        ) : null}
+                        <Badge variant={STATUS_VARIANT[h.toStatus]} className="text-[10px]">
+                          {h.toStatus}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(h.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      {h.note ? (
+                        <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{h.note}</p>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
           {order.notes ? (
             <Card className="p-5">
               <h2 className="text-sm font-semibold">Notes</h2>
@@ -282,20 +417,47 @@ export default function AdminOrderDetailPage({
               <div className="font-medium">{order.contactEmail ?? '—'}</div>
               <div className="mt-2 text-muted-foreground">Type</div>
               <div>{order.userId ? 'Registered customer' : 'Guest checkout'}</div>
+              {order.userId ? (
+                <Button variant="outline" size="sm" asChild className="mt-3">
+                  <Link href={`/admin/customers/${order.userId}` as Route}>View customer</Link>
+                </Button>
+              ) : null}
             </div>
           </Card>
+
+          {order.refundedAt ? (
+            <Card className="p-5">
+              <h2 className="text-sm font-semibold">Refund</h2>
+              <Separator className="my-3" />
+              <dl className="space-y-1 text-sm">
+                <Row
+                  label="Refunded"
+                  value={order.refundedAmount ? formatVnd(order.refundedAmount) : '—'}
+                  bold
+                />
+                <div className="text-muted-foreground">
+                  {new Date(order.refundedAt).toLocaleString()}
+                </div>
+                {order.refundReason ? (
+                  <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
+                    {order.refundReason}
+                  </p>
+                ) : null}
+              </dl>
+            </Card>
+          ) : null}
 
           <Card className="p-5">
             <h2 className="text-sm font-semibold">Update status</h2>
             <Separator className="my-3" />
-            {nextStates.length === 0 ? (
+            {statusTransitions.length === 0 && !canRefund ? (
               <p className="text-sm text-muted-foreground">This order is in a terminal state.</p>
             ) : (
               <div className="grid gap-2">
-                {nextStates.map((next) => (
+                {statusTransitions.map((next) => (
                   <Button
                     key={next}
-                    variant={next === 'CANCELLED' || next === 'REFUNDED' ? 'outline' : 'default'}
+                    variant={next === 'CANCELLED' ? 'outline' : 'default'}
                     disabled={saving !== null}
                     onClick={() => transition(next)}
                   >
@@ -303,6 +465,11 @@ export default function AdminOrderDetailPage({
                     Mark as {next}
                   </Button>
                 ))}
+                {canRefund ? (
+                  <Button variant="outline" onClick={() => setRefundOpen(true)}>
+                    Refund…
+                  </Button>
+                ) : null}
               </div>
             )}
             {order.paymentExpiresAt && order.status === 'PENDING' ? (
@@ -313,6 +480,57 @@ export default function AdminOrderDetailPage({
           </Card>
         </aside>
       </div>
+
+      <Dialog open={refundOpen} onOpenChange={(o) => (!refunding ? setRefundOpen(o) : undefined)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Refund order</DialogTitle>
+            <DialogDescription>
+              Refund {order.orderNumber}. This transitions the order to REFUNDED.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label htmlFor="refund-reason">Reason</Label>
+              <Textarea
+                id="refund-reason"
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                placeholder="Why is this order being refunded?"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="refund-amount">Amount</Label>
+              <Input
+                id="refund-amount"
+                inputMode="decimal"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+                placeholder="full amount"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave blank to refund the full order total.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={refundRestock}
+                onCheckedChange={(v) => setRefundRestock(v === true)}
+              />
+              Return refunded items to inventory
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefundOpen(false)} disabled={refunding}>
+              Cancel
+            </Button>
+            <Button onClick={submitRefund} disabled={refunding || !refundReason.trim()}>
+              {refunding ? <Loader2 className="size-4 animate-spin" /> : null}
+              Refund
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

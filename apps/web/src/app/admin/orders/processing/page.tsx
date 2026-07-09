@@ -1,10 +1,13 @@
-import { UnderConstruction } from '@/components/under-construction';
+'use client';
+
+import { PageHeader } from '@ecom/ui';
+import { OrdersTable } from '@/components/orders-table';
 
 export default function OrdersProcessingPage() {
   return (
-    <UnderConstruction
-      title="Chờ xử lý / Chuẩn bị hàng"
-      description="Đơn hàng đang chờ xác nhận và chuẩn bị giao."
-    />
+    <>
+      <PageHeader title="Processing" description="Orders confirmed and being prepared for shipment." />
+      <OrdersTable baseFilters={{ status: 'PROCESSING' }} showSearch />
+    </>
   );
 }

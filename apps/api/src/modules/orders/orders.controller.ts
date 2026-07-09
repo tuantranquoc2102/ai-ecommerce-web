@@ -16,6 +16,7 @@ import {
   PERM,
   RefundOrderDto,
   UpdateOrderStatusDto,
+  UpdateShippingDto,
 } from '@ecom/shared';
 import { OptionalAuth } from '../../common/decorators/public.decorator';
 import { CurrentUser, type RequestUser } from '../../common/decorators/current-user.decorator';
@@ -116,31 +117,35 @@ export class OrdersController {
   updateStatus(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(UpdateOrderStatusDto)) body: UpdateOrderStatusDto,
+    @CurrentUser() user?: RequestUser,
   ) {
-    return this.orders.transitionStatus(id, body);
+    return this.orders.transitionStatus(id, body, user?.id);
   }
 
   /**
-   * Records a refund transition on the order. M3.3 does NOT call back to the
-   * payment gateway to reverse funds — that lands in M3.4. Admins use this to
-   * keep the ledger consistent after processing refunds out-of-band.
+   * Records a refund against a paid order. Does NOT call back to the payment
+   * gateway to reverse funds — admins process the money movement out-of-band
+   * and use this to keep the ledger, stock, and audit trail consistent.
    */
   @RequirePermission(PERM.ORDER_REFUND)
   @Post(':id/refund')
   refund(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(RefundOrderDto)) body: RefundOrderDto,
+    @CurrentUser() user?: RequestUser,
   ) {
-    return this.orders.transitionStatus(id, {
-      status: 'REFUNDED',
-      // The reason is stored as an admin note appended to the order.
-    }).then((order) => {
-      // Append reason to notes without blocking the response.
-      void this.prisma.order.update({
-        where: { id },
-        data: { notes: order.notes ? `${order.notes}\n[Refund] ${body.reason}` : `[Refund] ${body.reason}` },
-      });
-      return order;
-    });
+    return this.orders.refund(id, body, user?.id);
+  }
+
+  /**
+   * Standalone edit of an order's shipping info without a status change.
+   */
+  @RequirePermission(PERM.ORDER_UPDATE)
+  @Patch(':id/shipping')
+  updateShipping(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(UpdateShippingDto)) body: UpdateShippingDto,
+  ) {
+    return this.orders.updateShipping(id, body);
   }
 }

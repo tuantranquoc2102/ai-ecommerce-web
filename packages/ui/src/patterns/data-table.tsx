@@ -43,6 +43,12 @@ interface DataTableProps<TData, TValue> {
   empty?: ReactNode;
   /** Pagination size. Defaults to 20. */
   pageSize?: number;
+  /**
+   * Hide the built-in pagination footer and render all provided rows. Use when
+   * the parent owns pagination server-side (e.g. fetches one page at a time) so
+   * the footer isn't duplicated.
+   */
+  hidePagination?: boolean;
   /** Optional click handler on a row. */
   onRowClick?: (row: TData) => void;
 }
@@ -66,6 +72,7 @@ export function DataTable<TData, TValue>({
   toolbar,
   empty,
   pageSize = 20,
+  hidePagination = false,
   onRowClick,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -80,7 +87,9 @@ export function DataTable<TData, TValue>({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // Omit the pagination row model when the parent paginates so every provided
+    // row renders (no client-side slicing/truncation).
+    getPaginationRowModel: hidePagination ? undefined : getPaginationRowModel(),
     initialState: { pagination: { pageSize } },
   });
 
@@ -179,7 +188,7 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <DataTablePagination table={table} />
+      {hidePagination ? null : <DataTablePagination table={table} />}
     </div>
   );
 }

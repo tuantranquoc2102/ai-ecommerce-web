@@ -123,7 +123,7 @@ const ROLES: { code: string; name: string; description: string; isSystem: boolea
       'page.read', 'page.write', 'banner.read', 'banner.write', 'menu.write',
       'block_template.read', 'block_template.write',
       'post.read', 'post.write',
-      'order.read', 'order.update',
+      'order.read', 'order.update', 'order.refund',
       'element.order.refund_button',
       'setting.read', 'setting.write',
     ],

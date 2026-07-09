@@ -563,9 +563,16 @@ model Order {
   completedAt      DateTime?
   cancelledAt      DateTime?
 
-  items    OrderItem[]
-  shipping ShippingInfo?
-  payments Payment[]
+  // Refund tracking. refundedAmount is the total amount refunded so far
+  // (supports full or partial). Set alongside status = REFUNDED.
+  refundedAmount Decimal?  @db.Decimal(12, 2)
+  refundedAt     DateTime?
+  refundReason   String?
+
+  items         OrderItem[]
+  shipping      ShippingInfo?
+  payments      Payment[]
+  statusHistory OrderStatusHistory[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -573,6 +580,22 @@ model Order {
   @@index([userId])
   @@index([status])
   @@index([paymentExpiresAt])
+}
+
+// Audit trail of every order status change, powering the admin timeline.
+model OrderStatusHistory {
+  id          String       @id @default(cuid())
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId     String
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  note        String?
+  // Admin/user who triggered the change; null for system transitions (cron, IPN).
+  actorUserId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
 }
 
 model OrderItem {
