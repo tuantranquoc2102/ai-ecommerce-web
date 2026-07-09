@@ -1,10 +1,13 @@
-import { UnderConstruction } from '@/components/under-construction';
+'use client';
+
+import { PageHeader } from '@ecom/ui';
+import { OrdersTable } from '@/components/orders-table';
 
 export default function OrdersShippingPage() {
   return (
-    <UnderConstruction
-      title="Đang giao / Hoàn thành"
-      description="Đơn hàng đang vận chuyển hoặc đã giao thành công."
-    />
+    <>
+      <PageHeader title="Shipping" description="Orders currently in transit to customers." />
+      <OrdersTable baseFilters={{ status: 'SHIPPING' }} showSearch />
+    </>
   );
 }

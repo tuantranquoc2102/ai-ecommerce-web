@@ -17,6 +17,7 @@
     "prisma:studio": "dotenv -e ../../.env -- prisma studio",
     "prisma:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "prisma:seed:products": "dotenv -e ../../.env -- tsx prisma/seed-products.ts",
+    "prisma:seed:orders": "dotenv -e ../../.env -- tsx prisma/seed-orders.ts",
     "prebuild": "pnpm prisma:generate",
     "typecheck": "tsc --noEmit",
     "build": "tsc -b",

@@ -1,10 +1,16 @@
-import { UnderConstruction } from '@/components/under-construction';
+'use client';
+
+import { PageHeader } from '@ecom/ui';
+import { OrdersTable } from '@/components/orders-table';
 
 export default function OrdersReturnsPage() {
   return (
-    <UnderConstruction
-      title="Trả hàng / Hoàn tiền"
-      description="Xử lý yêu cầu trả hàng và hoàn tiền cho khách."
-    />
+    <>
+      <PageHeader
+        title="Returns & cancellations"
+        description="Refunded and cancelled orders."
+      />
+      <OrdersTable statuses={['REFUNDED', 'CANCELLED']} showSearch />
+    </>
   );
 }

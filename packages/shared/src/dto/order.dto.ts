@@ -32,6 +32,11 @@ const emptyToUndef = <T extends z.ZodTypeAny>(schema: T) =>
 
 const trimmed = (max: number) => z.string().trim().max(max);
 
+const decimalString = z
+  .union([z.string(), z.number()])
+  .transform((v) => (typeof v === 'number' ? v.toString() : v))
+  .refine((v) => /^\d+(\.\d{1,2})?$/.test(v), 'invalid decimal (max 2 fraction digits)');
+
 export const ShippingInfoInput = z.object({
   recipientName: trimmed(120).min(1),
   recipientPhone: trimmed(30).min(6),
@@ -78,6 +83,8 @@ export const AdminListOrdersQuery = z.object({
   search: trimmed(200).optional(),
   status: OrderStatus.optional(),
   paymentProvider: PaymentProvider.optional(),
+  /** Restrict to a single customer's orders (used by the customer profile page). */
+  userId: emptyToUndef(z.string().cuid().optional()),
   from: emptyToUndef(z.string().datetime().optional()),
   to: emptyToUndef(z.string().datetime().optional()),
   page: z.coerce.number().int().positive().default(1),
@@ -103,8 +110,26 @@ export type UpdateOrderStatusDto = z.infer<typeof UpdateOrderStatusDto>;
 
 export const RefundOrderDto = z.object({
   reason: trimmed(500).min(1),
+  /** Amount to refund; defaults to the full order total when omitted. */
+  amount: emptyToUndef(decimalString.optional()),
+  /** Whether to return refunded items to inventory. Defaults to true. */
+  restock: z.boolean().optional().default(true),
 });
 export type RefundOrderDto = z.infer<typeof RefundOrderDto>;
+
+/** Standalone fulfillment/shipping edit — updates ShippingInfo without a status change. */
+export const UpdateShippingDto = z.object({
+  recipientName: emptyToUndef(trimmed(120).optional()),
+  recipientPhone: emptyToUndef(trimmed(30).optional()),
+  addressLine: emptyToUndef(trimmed(300).optional()),
+  ward: emptyToUndef(trimmed(100).optional()),
+  district: emptyToUndef(trimmed(100).optional()),
+  province: emptyToUndef(trimmed(100).optional()),
+  postalCode: emptyToUndef(trimmed(20).optional()),
+  carrier: emptyToUndef(trimmed(100).optional()),
+  trackingCode: emptyToUndef(trimmed(100).optional()),
+});
+export type UpdateShippingDto = z.infer<typeof UpdateShippingDto>;
 
 /**
  * Shape returned to the client on GET /orders/:id and /orders/by-number/:n.
@@ -153,6 +178,15 @@ export interface OrderPaymentView {
   ipnReceivedAt: string | null;
 }
 
+export interface OrderStatusHistoryView {
+  id: string;
+  fromStatus: OrderStatus | null;
+  toStatus: OrderStatus;
+  note: string | null;
+  actorUserId: string | null;
+  createdAt: string;
+}
+
 export interface OrderView {
   id: string;
   orderNumber: string;
@@ -171,9 +205,13 @@ export interface OrderView {
   paidAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  refundedAmount: string | null;
+  refundedAt: string | null;
+  refundReason: string | null;
   items: OrderItemView[];
   shipping: OrderShippingView | null;
   payments: OrderPaymentView[];
+  statusHistory: OrderStatusHistoryView[];
   createdAt: string;
   updatedAt: string;
 }

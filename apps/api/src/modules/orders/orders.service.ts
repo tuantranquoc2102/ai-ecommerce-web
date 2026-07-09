@@ -16,7 +16,9 @@ import type {
   OrderStatus,
   OrderView,
   PaginatedOrders,
+  RefundOrderDto,
   UpdateOrderStatusDto,
+  UpdateShippingDto,
 } from '@ecom/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MailService } from '../../common/mail/mail.service';
@@ -40,6 +42,7 @@ const ORDER_INCLUDE = {
   shipping: true,
   payments: { orderBy: { createdAt: 'desc' as const } },
   coupon: { select: { code: true } },
+  statusHistory: { orderBy: { createdAt: 'asc' as const } },
 } satisfies Prisma.OrderInclude;
 
 type OrderWithRelations = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
@@ -212,6 +215,8 @@ export class OrdersService {
         }
         throw e;
       });
+
+      await this.recordStatusHistory(tx, created.id, null, 'PENDING', 'Order placed');
 
       // Reserve stock atomically. The earlier in-memory check was optimistic
       // (two concurrent checkouts could both read `available >= qty` before
@@ -406,6 +411,14 @@ export class OrdersService {
         data: { status: 'PAID', paidAt },
       });
 
+      await this.recordStatusHistory(
+        tx,
+        orderId,
+        order.status as OrderStatus,
+        'PAID',
+        'Payment received',
+      );
+
       if (paymentTxnId) {
         await tx.payment.updateMany({
           where: { orderId, providerTxnId: paymentTxnId },
@@ -558,7 +571,12 @@ export class OrdersService {
    * Special case: COD orders can be moved PENDING → PROCESSING; the service
    * auto-promotes through PAID (marks stock consumed + records payment).
    */
-  async transitionStatus(id: string, dto: UpdateOrderStatusDto): Promise<OrderView> {
+  async transitionStatus(
+    id: string,
+    dto: UpdateOrderStatusDto,
+    actorUserId?: string,
+    note?: string,
+  ): Promise<OrderView> {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: { payments: true },
@@ -568,6 +586,7 @@ export class OrdersService {
     }
 
     const isCod = order.payments.some((p) => p.provider === 'COD');
+    let paidPromoted = false;
     if (
       isCod &&
       order.status === 'PENDING' &&
@@ -575,9 +594,11 @@ export class OrdersService {
     ) {
       // Two-step for COD: PENDING → PAID → target
       await this.markPaid(order.id);
+      paidPromoted = true;
     } else if (order.status === 'PENDING' && dto.status === 'PAID') {
       // Non-COD paths use markPaid so stock/payment stay consistent.
       await this.markPaid(order.id);
+      paidPromoted = true;
     } else {
       assertTransition(order.status, dto.status);
     }
@@ -611,6 +632,23 @@ export class OrdersService {
 
       await tx.order.update({ where: { id: order.id }, data: patch });
 
+      // markPaid (when it promoted the order) already logged the PAID step;
+      // here we log the subsequent step (or the direct transition when no
+      // promotion happened). Skip when there's nothing new to record.
+      const historyFrom: OrderStatus = paidPromoted
+        ? 'PAID'
+        : (order.status as OrderStatus);
+      if (historyFrom !== dto.status) {
+        await this.recordStatusHistory(
+          tx,
+          order.id,
+          historyFrom,
+          dto.status,
+          note,
+          actorUserId,
+        );
+      }
+
       if (dto.carrier !== undefined || dto.trackingCode !== undefined) {
         await tx.shippingInfo.update({
           where: { orderId: order.id },
@@ -623,6 +661,109 @@ export class OrdersService {
         });
       }
     });
+
+    return this.findOne(id);
+  }
+
+  /**
+   * Records a refund against a paid order: flips status to REFUNDED, captures
+   * the refunded amount / reason / timestamp, returns sold stock (unless the
+   * caller opts out), and writes a REFUNDED payment ledger row. The actual
+   * gateway money-movement is handled out-of-band.
+   */
+  async refund(id: string, dto: RefundOrderDto, actorUserId?: string): Promise<OrderView> {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: { include: { product: { select: { type: true } } } },
+        payments: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+    if (!order) {
+      throw new NotFoundException({ code: 'ORDER_NOT_FOUND', message: 'Order not found' });
+    }
+
+    assertTransition(order.status as OrderStatus, 'REFUNDED');
+
+    const refundAmount = dto.amount ? new Prisma.Decimal(dto.amount) : order.totalAmount;
+    const now = new Date();
+    const provider = order.payments[0]?.provider ?? 'COD';
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id },
+        data: {
+          status: 'REFUNDED',
+          refundedAmount: refundAmount,
+          refundedAt: now,
+          refundReason: dto.reason,
+        },
+      });
+
+      if (dto.restock !== false) {
+        for (const item of order.items) {
+          if (item.product.type !== 'PHYSICAL') continue;
+          if (item.variantId) {
+            await tx.productVariant.update({
+              where: { id: item.variantId },
+              data: { stockQuantity: { increment: item.quantity } },
+            });
+          } else {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { stockQuantity: { increment: item.quantity } },
+            });
+          }
+        }
+      }
+
+      await tx.payment.create({
+        data: {
+          orderId: id,
+          provider,
+          amount: refundAmount,
+          currency: order.currency,
+          status: 'REFUNDED',
+          providerTxnId: null,
+        },
+      });
+
+      await this.recordStatusHistory(
+        tx,
+        id,
+        order.status as OrderStatus,
+        'REFUNDED',
+        dto.reason,
+        actorUserId,
+      );
+    });
+
+    return this.findOne(id);
+  }
+
+  /**
+   * Standalone edit of an order's shipping info (recipient/address/carrier/
+   * tracking) without a status change. Only fields present in the DTO are
+   * written; everything else is left untouched.
+   */
+  async updateShipping(id: string, dto: UpdateShippingDto): Promise<OrderView> {
+    const order = await this.prisma.order.findUnique({ where: { id }, select: { id: true } });
+    if (!order) {
+      throw new NotFoundException({ code: 'ORDER_NOT_FOUND', message: 'Order not found' });
+    }
+
+    const data: Prisma.ShippingInfoUpdateInput = {};
+    if (dto.recipientName !== undefined) data.recipientName = dto.recipientName;
+    if (dto.recipientPhone !== undefined) data.recipientPhone = dto.recipientPhone;
+    if (dto.addressLine !== undefined) data.addressLine = dto.addressLine;
+    if (dto.ward !== undefined) data.ward = dto.ward;
+    if (dto.district !== undefined) data.district = dto.district;
+    if (dto.province !== undefined) data.province = dto.province;
+    if (dto.postalCode !== undefined) data.postalCode = dto.postalCode;
+    if (dto.carrier !== undefined) data.carrier = dto.carrier;
+    if (dto.trackingCode !== undefined) data.trackingCode = dto.trackingCode;
+
+    await this.prisma.shippingInfo.update({ where: { orderId: id }, data });
 
     return this.findOne(id);
   }
@@ -642,7 +783,7 @@ export class OrdersService {
       take: 100,
     });
     for (const { id } of stale) {
-      await this.transitionStatus(id, { status: 'EXPIRED' });
+      await this.transitionStatus(id, { status: 'EXPIRED' }, undefined, 'Payment window expired');
     }
     return stale.length;
   }
@@ -650,6 +791,7 @@ export class OrdersService {
   async listAdmin(query: AdminListOrdersQuery): Promise<PaginatedOrders> {
     const where: Prisma.OrderWhereInput = {
       ...(query.status ? { status: query.status } : {}),
+      ...(query.userId ? { userId: query.userId } : {}),
       ...(query.paymentProvider ? { payments: { some: { provider: query.paymentProvider } } } : {}),
       ...(query.from || query.to
         ? {
@@ -816,9 +958,39 @@ export class OrdersService {
         createdAt: p.createdAt.toISOString(),
         ipnReceivedAt: p.ipnReceivedAt?.toISOString() ?? null,
       })),
+      refundedAmount: o.refundedAmount?.toString() ?? null,
+      refundedAt: o.refundedAt?.toISOString() ?? null,
+      refundReason: o.refundReason ?? null,
+      statusHistory: o.statusHistory.map((h) => ({
+        id: h.id,
+        fromStatus: h.fromStatus as OrderStatus | null,
+        toStatus: h.toStatus as OrderStatus,
+        note: h.note,
+        actorUserId: h.actorUserId,
+        createdAt: h.createdAt.toISOString(),
+      })),
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
     };
+  }
+
+  private async recordStatusHistory(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    fromStatus: OrderStatus | null,
+    toStatus: OrderStatus,
+    note?: string,
+    actorUserId?: string,
+  ) {
+    return tx.orderStatusHistory.create({
+      data: {
+        orderId,
+        fromStatus,
+        toStatus,
+        note: note ?? null,
+        actorUserId: actorUserId ?? null,
+      },
+    });
   }
 }
 
