@@ -2,13 +2,18 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import type {
   CreateUserDto,
+  CustomerStatsView,
   ListUsersQuery,
+  OrderStatus,
   UpdateUserDto,
   UserStatus,
 } from '@ecom/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { PermissionsService } from '../authz/permissions.service';
 import * as bcrypt from 'bcrypt';
+
+/** Order statuses that count as revenue when computing customer spend/stats. */
+const PAIDISH_STATUSES: OrderStatus[] = ['PAID', 'PROCESSING', 'SHIPPING', 'COMPLETED'];
 
 const USER_SUMMARY_SELECT = {
   id: true,
@@ -18,11 +23,20 @@ const USER_SUMMARY_SELECT = {
   phone: true,
   avatarUrl: true,
   status: true,
+  internalNote: true,
   twoFactorEnabled: true,
   lastLoginAt: true,
   createdAt: true,
   updatedAt: true,
   userRoles: { include: { role: { select: { id: true, code: true, name: true } } } },
+} as const;
+
+/** Detail select for the single-customer 360° view: summary + group memberships. */
+const USER_DETAIL_SELECT = {
+  ...USER_SUMMARY_SELECT,
+  groupMemberships: {
+    include: { group: { select: { id: true, name: true, color: true, type: true } } },
+  },
 } as const;
 
 @Injectable()
@@ -153,6 +167,9 @@ export class UsersService {
           }
         : {}),
       ...(query.roleId ? { userRoles: { some: { roleId: query.roleId } } } : {}),
+      ...(query.roleCode
+        ? { userRoles: { some: { role: { code: query.roleCode } } } }
+        : {}),
     };
     const skip = (query.page - 1) * query.pageSize;
 
@@ -173,7 +190,7 @@ export class UsersService {
   async findByIdForAdmin(id: string) {
     const user = await this.prisma.user.findFirst({
       where: { id, deletedAt: null },
-      select: USER_SUMMARY_SELECT,
+      select: USER_DETAIL_SELECT,
     });
     if (!user) {
       throw new NotFoundException({ code: 'USER_NOT_FOUND', message: 'User not found' });
@@ -189,6 +206,18 @@ export class UsersService {
     }
     await this.assertRolesExist(input.roleIds);
 
+    // Resolve any roleCodes → role ids and merge with the explicit roleIds so an
+    // admin can create e.g. a CUSTOMER without needing role.read to look up ids.
+    const roleIdsFromCodes = input.roleCodes?.length
+      ? (
+          await this.prisma.role.findMany({
+            where: { code: { in: input.roleCodes } },
+            select: { id: true },
+          })
+        ).map((r) => r.id)
+      : [];
+    const roleIds = Array.from(new Set([...(input.roleIds ?? []), ...roleIdsFromCodes]));
+
     const passwordHash = await bcrypt.hash(input.password, 12);
 
     const user = await this.prisma.user.create({
@@ -200,14 +229,14 @@ export class UsersService {
         phone: input.phone ?? null,
         avatarUrl: input.avatarUrl ?? null,
         status: input.status,
-        userRoles: input.roleIds?.length
-          ? { create: input.roleIds.map((roleId) => ({ roleId })) }
+        userRoles: roleIds.length
+          ? { create: roleIds.map((roleId) => ({ roleId })) }
           : undefined,
       },
       select: USER_SUMMARY_SELECT,
     });
 
-    if (input.roleIds?.length) await this.permissions.invalidateUser(user.id);
+    if (roleIds.length) await this.permissions.invalidateUser(user.id);
     return user;
   }
 
@@ -221,9 +250,46 @@ export class UsersService {
         phone: input.phone === undefined ? undefined : input.phone,
         avatarUrl: input.avatarUrl === undefined ? undefined : input.avatarUrl,
         status: input.status ?? undefined,
+        internalNote: input.internalNote === undefined ? undefined : input.internalNote,
       },
       select: USER_SUMMARY_SELECT,
     });
+  }
+
+  /**
+   * Aggregate purchase stats for a customer's 360° profile. `orderCount` counts
+   * every order the user has placed; the money figures only include paid-ish
+   * orders (see PAIDISH_STATUSES). Decimals are returned as strings.
+   */
+  async getCustomerStats(id: string): Promise<CustomerStatsView> {
+    await this.findByIdForAdmin(id);
+
+    const [orderCount, paidAgg, lastOrder] = await this.prisma.$transaction([
+      this.prisma.order.count({ where: { userId: id } }),
+      this.prisma.order.aggregate({
+        where: { userId: id, status: { in: PAIDISH_STATUSES } },
+        _sum: { totalAmount: true },
+        _count: true,
+      }),
+      this.prisma.order.findFirst({
+        where: { userId: id, status: { in: PAIDISH_STATUSES } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+    ]);
+
+    const paidOrderCount = paidAgg._count;
+    const totalSpent = paidAgg._sum.totalAmount ?? new Prisma.Decimal(0);
+    const avgOrderValue =
+      paidOrderCount > 0 ? totalSpent.dividedBy(paidOrderCount) : new Prisma.Decimal(0);
+
+    return {
+      orderCount,
+      paidOrderCount,
+      totalSpent: totalSpent.toString(),
+      avgOrderValue: avgOrderValue.toString(),
+      lastOrderAt: lastOrder?.createdAt.toISOString() ?? null,
+    };
   }
 
   /**

@@ -20,6 +20,11 @@ export const CreateUserDto = z.object({
   avatarUrl: emptyToUndef(z.string().url().max(500).optional()),
   status: UserStatus.default('ACTIVE'),
   roleIds: z.array(z.string().cuid()).max(50).optional(),
+  /**
+   * Assign roles by their stable code (e.g. ['CUSTOMER']). Lets the admin create
+   * a customer without needing role.read to resolve role ids. Merged with roleIds.
+   */
+  roleCodes: z.array(z.string().trim().max(50)).max(50).optional(),
 });
 export type CreateUserDto = z.infer<typeof CreateUserDto>;
 
@@ -29,8 +34,19 @@ export const UpdateUserDto = z.object({
   phone: emptyToUndef(z.string().max(50).optional()),
   avatarUrl: emptyToUndef(z.string().url().max(500).optional()),
   status: UserStatus.optional(),
+  /** Admin-only internal annotation. Empty string clears it. */
+  internalNote: z.preprocess((v) => (v == null ? undefined : v), z.string().max(5000).optional()),
 });
 export type UpdateUserDto = z.infer<typeof UpdateUserDto>;
+
+/** Aggregate purchase stats for a customer's 360° profile. Decimals as strings. */
+export interface CustomerStatsView {
+  orderCount: number;
+  paidOrderCount: number;
+  totalSpent: string;
+  avgOrderValue: string;
+  lastOrderAt: string | null;
+}
 
 export const AssignRolesToUserDto = z.object({
   roleIds: z.array(z.string().cuid()).max(50),
@@ -41,6 +57,8 @@ export const ListUsersQuery = z.object({
   search: emptyToUndef(z.string().trim().max(200).optional()),
   status: emptyToUndef(UserStatus.optional()),
   roleId: emptyToUndef(z.string().cuid().optional()),
+  /** Filter by role code (e.g. 'CUSTOMER'). Complements roleId; both can combine. */
+  roleCode: emptyToUndef(z.string().trim().max(50).optional()),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(20),
 });

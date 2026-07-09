@@ -8,6 +8,8 @@ export * from './dto/tag.dto';
 export * from './dto/category.dto';
 export * from './dto/product.dto';
 export * from './dto/order.dto';
+export * from './dto/customer-group.dto';
+export * from './dto/review.dto';
 export * from './dto/coupon.dto';
 export * from './dto/payment.dto';
 export * from './dto/cms.dto';

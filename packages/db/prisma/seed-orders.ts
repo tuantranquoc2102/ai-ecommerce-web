@@ -8,6 +8,8 @@ import {
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
+  CustomerGroupType,
+  ReviewStatus,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
@@ -626,6 +628,191 @@ async function seedOrders(
 }
 
 // ---------------------------------------------------------------------------
+// Customer groups, reviews & internal notes
+// ---------------------------------------------------------------------------
+
+/** Order statuses that count as "paid" for spend/materialization purposes. */
+const PAID_STATUSES: OrderStatus[] = [
+  OrderStatus.PAID,
+  OrderStatus.PROCESSING,
+  OrderStatus.SHIPPING,
+  OrderStatus.COMPLETED,
+];
+
+const GROUP_SLUGS = ['vip-customers', 'high-spenders', 'newsletter'];
+
+// High Spenders membership criteria (also persisted on the DYNAMIC group).
+const HIGH_SPENDER_RULES = { minTotalSpent: 500_000, minOrderCount: 1 };
+
+/**
+ * Fixed review definitions so re-runs are stable. `p`/`c` index into the
+ * seeded `products`/`customerIds` arrays; `verified` attaches the customer's
+ * seeded order so the storefront shows a "verified purchase" badge; `reply`
+ * (when present) is rendered as the store's admin response.
+ */
+interface ReviewSeed {
+  p: number;
+  c: number;
+  rating: number;
+  status: ReviewStatus;
+  title: string;
+  content: string;
+  verified: boolean;
+  reply?: string;
+}
+
+const REVIEWS: ReviewSeed[] = [
+  { p: 0, c: 0, rating: 5, status: ReviewStatus.APPROVED, title: 'Chống ồn cực tốt', content: 'Đeo cả ngày làm việc rất thoải mái, âm bass chắc và sâu.', verified: true, reply: 'Cảm ơn bạn đã tin tưởng và ủng hộ shop!' },
+  { p: 0, c: 3, rating: 4, status: ReviewStatus.APPROVED, title: 'Ổn trong tầm giá', content: 'Pin trâu, kết nối nhanh. Chỉ tiếc phần đệm tai hơi nóng.', verified: true },
+  { p: 1, c: 1, rating: 5, status: ReviewStatus.APPROVED, title: 'Đồng hồ đáng tiền', content: 'GPS bắt nhanh, đo nhịp tim khá chính xác khi chạy bộ.', verified: true, reply: 'Rất vui vì sản phẩm phù hợp với bạn, chúc bạn tập luyện hiệu quả!' },
+  { p: 1, c: 5, rating: 3, status: ReviewStatus.PENDING, title: 'Tạm được', content: 'Màn hình đẹp nhưng app đôi khi mất kết nối với điện thoại.', verified: false },
+  { p: 2, c: 2, rating: 5, status: ReviewStatus.APPROVED, title: 'Nhỏ gọn, sạc nhanh', content: 'Sạc đầy laptop rất nhanh, mang đi công tác tiện lợi.', verified: true, reply: 'Cảm ơn đánh giá của bạn!' },
+  { p: 2, c: 6, rating: 2, status: ReviewStatus.REJECTED, title: 'Không như mong đợi', content: 'Củ sạc nóng hơn tôi tưởng, review có nội dung quảng cáo bên thứ ba.', verified: false },
+  { p: 3, c: 0, rating: 5, status: ReviewStatus.APPROVED, title: 'Sách kinh điển', content: 'Bản in đẹp, nội dung ai làm lập trình cũng nên đọc một lần.', verified: true },
+  { p: 3, c: 4, rating: 4, status: ReviewStatus.PENDING, title: 'Nội dung hay', content: 'Giao hàng hơi lâu nhưng chất lượng sách thì miễn chê.', verified: true },
+  { p: 4, c: 1, rating: 5, status: ReviewStatus.APPROVED, title: 'Must-read', content: 'Rất nhiều lời khuyên thực tế, đọc đi đọc lại vẫn thấm.', verified: false },
+  { p: 4, c: 7, rating: 1, status: ReviewStatus.HIDDEN, title: 'Thất vọng', content: 'Bìa sách bị móp khi nhận, nội dung bình luận không phù hợp.', verified: true },
+  { p: 5, c: 2, rating: 4, status: ReviewStatus.APPROVED, title: 'eBook tiện lợi', content: 'Tải về đọc ngay, định dạng PDF rõ ràng trên máy tính bảng.', verified: true },
+  { p: 5, c: 3, rating: 3, status: ReviewStatus.PENDING, title: 'Bình thường', content: 'Nội dung tốt nhưng mong có thêm bản EPUB.', verified: false },
+  { p: 6, c: 4, rating: 5, status: ReviewStatus.APPROVED, title: 'Key kích hoạt ngay', content: 'Nhận serial key qua email, kích hoạt phần mềm không lỗi.', verified: true },
+  { p: 6, c: 5, rating: 4, status: ReviewStatus.HIDDEN, title: 'Tốt', content: 'Phần mềm chạy ổn, tạm ẩn để chờ kiểm duyệt nội dung.', verified: false },
+  { p: 7, c: 6, rating: 2, status: ReviewStatus.REJECTED, title: 'Khó kích hoạt', content: 'Mất thời gian nhập key, review chứa thông tin liên hệ cá nhân.', verified: true },
+];
+
+async function seedGroupsReviewsNotes(
+  products: SeededProduct[],
+  customerIds: string[],
+): Promise<{ groupCount: number; reviewCount: number }> {
+  // --- Customer groups -----------------------------------------------------
+  // Idempotent reset: removing the group cascades its members.
+  await prisma.customerGroup.deleteMany({ where: { slug: { in: GROUP_SLUGS } } });
+
+  // 1) VIP Customers — MANUAL, ~3 hand-picked members.
+  const vipMembers = customerIds.slice(0, 3);
+  await prisma.customerGroup.create({
+    data: {
+      name: 'VIP Customers',
+      slug: 'vip-customers',
+      description: 'Khách hàng thân thiết được ưu tiên chăm sóc.',
+      color: '#f59e0b',
+      type: CustomerGroupType.MANUAL,
+      members: { create: vipMembers.map((userId) => ({ userId })) },
+    },
+  });
+
+  // 2) High Spenders — DYNAMIC, membership materialized from paid-ish orders.
+  const spendByUser = await prisma.order.groupBy({
+    by: ['userId'],
+    where: {
+      orderNumber: { startsWith: SEED_ORDER_PREFIX },
+      userId: { in: customerIds },
+      status: { in: PAID_STATUSES },
+    },
+    _sum: { totalAmount: true },
+    _count: { _all: true },
+  });
+
+  const minSpent = new Prisma.Decimal(HIGH_SPENDER_RULES.minTotalSpent);
+  const highSpenderIds = spendByUser
+    .filter(
+      (g): g is typeof g & { userId: string } =>
+        g.userId != null &&
+        g._count._all >= HIGH_SPENDER_RULES.minOrderCount &&
+        (g._sum.totalAmount ?? new Prisma.Decimal(0)).gte(minSpent),
+    )
+    .map((g) => g.userId);
+
+  await prisma.customerGroup.create({
+    data: {
+      name: 'High Spenders',
+      slug: 'high-spenders',
+      description: 'Tự động: tổng chi tiêu và số đơn đạt ngưỡng.',
+      color: '#22c55e',
+      type: CustomerGroupType.DYNAMIC,
+      rules: HIGH_SPENDER_RULES as Prisma.InputJsonValue,
+      members: { create: highSpenderIds.map((userId) => ({ userId })) },
+    },
+  });
+
+  // 3) Newsletter — MANUAL, ~5 members.
+  const newsletterMembers = customerIds.slice(0, 5);
+  await prisma.customerGroup.create({
+    data: {
+      name: 'Newsletter',
+      slug: 'newsletter',
+      description: 'Khách đã đăng ký nhận bản tin khuyến mãi.',
+      color: '#3b82f6',
+      type: CustomerGroupType.MANUAL,
+      members: { create: newsletterMembers.map((userId) => ({ userId })) },
+    },
+  });
+
+  const groupCount = 3;
+
+  // --- Reviews -------------------------------------------------------------
+  // Idempotent reset: drop any reviews attached to the seeded products.
+  await prisma.review.deleteMany({ where: { product: { slug: { startsWith: 'seed-' } } } });
+
+  // One seeded order per customer, used to mark reviews as verified purchases.
+  const seededOrders = await prisma.order.findMany({
+    where: { orderNumber: { startsWith: SEED_ORDER_PREFIX }, userId: { in: customerIds } },
+    select: { id: true, userId: true },
+    orderBy: { orderNumber: 'asc' },
+  });
+  const orderIdByUser = new Map<string, string>();
+  for (const o of seededOrders) {
+    if (o.userId && !orderIdByUser.has(o.userId)) orderIdByUser.set(o.userId, o.id);
+  }
+
+  // Admin who "replied" to approved reviews (nice-to-have; field is free-text).
+  const adminUser = await prisma.user.findFirst({
+    where: { userRoles: { some: { role: { code: { in: ['SUPER_ADMIN', 'ADMIN'] } } } } },
+    select: { id: true },
+  });
+
+  const now = Date.now();
+  let reviewCount = 0;
+  for (let i = 0; i < REVIEWS.length; i++) {
+    const r = REVIEWS[i]!;
+    const product = products[r.p];
+    const userId = customerIds[r.c];
+    if (!product || !userId) continue;
+
+    const orderId = r.verified ? (orderIdByUser.get(userId) ?? null) : null;
+    const createdAt = new Date(now - (REVIEWS.length - i) * DAY_MS);
+
+    await prisma.review.create({
+      data: {
+        productId: product.id,
+        userId,
+        orderId,
+        rating: r.rating,
+        title: r.title,
+        content: r.content,
+        status: r.status,
+        reply: r.reply ?? null,
+        repliedAt: r.reply ? createdAt : null,
+        repliedByUserId: r.reply ? (adminUser?.id ?? null) : null,
+        createdAt,
+      },
+    });
+    reviewCount++;
+  }
+
+  // --- Internal notes ------------------------------------------------------
+  await prisma.user.update({
+    where: { email: 'customer1@example.com' },
+    data: { internalNote: 'VIP — ưu tiên hỗ trợ' },
+  });
+  await prisma.user.update({
+    where: { email: 'customer2@example.com' },
+    data: { internalNote: 'Đã từng khiếu nại đơn SEED-0002' },
+  });
+
+  return { groupCount, reviewCount };
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -637,12 +824,14 @@ async function main() {
   const customerIds = await seedCustomers();
   const couponByCode = await seedCoupons();
   const orderCount = await seedOrders(products, customerIds, couponByCode);
+  const { groupCount, reviewCount } = await seedGroupsReviewsNotes(products, customerIds);
 
   console.log('Done seeding orders.');
   console.log(
     `  Categories: ${CATEGORIES.length} | Products: ${products.length} | ` +
       `Customers: ${customerIds.length} | Coupons: ${couponByCode.size} | Orders: ${orderCount}`,
   );
+  console.log(`  Customer groups: ${groupCount} | Reviews: ${reviewCount}`);
   console.log(`  Customer login password: ${CUSTOMER_PASSWORD}`);
 }
 

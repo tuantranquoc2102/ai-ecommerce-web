@@ -97,6 +97,12 @@ const PERMISSIONS: PermSeed[] = [
   { code: 'setting.read', name: 'View site settings', type: 'API', apiEndpoint: 'GET /api/v1/settings/:key' },
   { code: 'setting.write', name: 'Manage site settings', type: 'API', apiEndpoint: 'PUT /api/v1/settings/:key' },
 
+  // API: customer groups & reviews
+  { code: 'customer_group.read', name: 'List/view customer groups', type: 'API', apiEndpoint: 'GET /api/v1/customer-groups' },
+  { code: 'customer_group.write', name: 'Manage customer groups', type: 'API', apiEndpoint: 'POST /api/v1/customer-groups' },
+  { code: 'review.read', name: 'List/view reviews', type: 'API', apiEndpoint: 'GET /api/v1/reviews' },
+  { code: 'review.moderate', name: 'Moderate/reply to reviews', type: 'API', apiEndpoint: 'PATCH /api/v1/reviews/:id' },
+
   // UI elements (rendered conditionally on the front-end)
   { code: 'element.user.delete_button', name: 'Show delete-user button', type: 'ELEMENT' },
   { code: 'element.order.refund_button', name: 'Show refund-order button', type: 'ELEMENT' },
@@ -126,6 +132,8 @@ const ROLES: { code: string; name: string; description: string; isSystem: boolea
       'order.read', 'order.update', 'order.refund',
       'element.order.refund_button',
       'setting.read', 'setting.write',
+      'customer_group.read', 'customer_group.write',
+      'review.read', 'review.moderate',
     ],
   },
   {

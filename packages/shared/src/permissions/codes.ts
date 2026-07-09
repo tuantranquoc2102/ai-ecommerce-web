@@ -46,6 +46,12 @@ export const PERM = {
   ORDER_UPDATE: 'order.update',
   ORDER_REFUND: 'order.refund',
 
+  CUSTOMER_GROUP_READ: 'customer_group.read',
+  CUSTOMER_GROUP_WRITE: 'customer_group.write',
+
+  REVIEW_READ: 'review.read',
+  REVIEW_MODERATE: 'review.moderate',
+
   SETTING_READ: 'setting.read',
   SETTING_WRITE: 'setting.write',
 } as const;
