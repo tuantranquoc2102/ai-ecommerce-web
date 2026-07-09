@@ -37,6 +37,12 @@ export class UsersController {
     return this.users.findByIdForAdmin(id);
   }
 
+  @RequirePermission(PERM.USER_READ)
+  @Get(':id/stats')
+  stats(@Param('id') id: string) {
+    return this.users.getCustomerStats(id);
+  }
+
   @RequirePermission(PERM.USER_CREATE)
   @Post()
   create(@Body(new ZodValidationPipe(CreateUserDto)) body: CreateUserDto) {

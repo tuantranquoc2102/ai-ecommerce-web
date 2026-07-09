@@ -39,6 +39,8 @@ model User {
   // (see JwtStrategy). Bumped on force-logout / suspend so revocation is
   // immediate instead of waiting for the access-token TTL to lapse.
   sessionsRevokedAt      DateTime?
+  // Free-text admin-only annotation on a customer (not visible to the customer).
+  internalNote           String?     @db.Text
 
   oauthAccounts       OAuthAccount[]
   refreshTokens       RefreshToken[]
@@ -46,6 +48,8 @@ model User {
   orders              Order[]
   digitalEntitlements DigitalEntitlement[]
   posts               Post[]
+  reviews             Review[]
+  groupMemberships    CustomerGroupMember[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -196,6 +200,7 @@ model Product {
   orderItems        OrderItem[]
   digitalAssets     DigitalAsset[]
   serialKeys        SerialKey[]
+  reviews           Review[]
 
   // "Related products" curated by the merchant (directional: this product → others).
   relatedProducts ProductRelation[] @relation("ProductRelationFrom")
@@ -701,5 +706,78 @@ model Payment {
 
   @@index([orderId])
   @@index([provider, providerTxnId])
+  @@index([status])
+}
+
+// =====================================================================
+// 5. CUSTOMER GROUPS & REVIEWS
+// =====================================================================
+
+enum CustomerGroupType {
+  MANUAL // members assigned by hand
+  DYNAMIC // members computed from `rules` and materialized on recompute
+}
+
+model CustomerGroup {
+  id          String            @id @default(cuid())
+  name        String
+  slug        String            @unique
+  description String?
+  // Tailwind-friendly accent token/hex for the group badge (e.g. "#22c55e").
+  color       String?
+  type        CustomerGroupType @default(MANUAL)
+  // For DYNAMIC groups: the membership criteria, e.g.
+  // { "minTotalSpent": 1000000, "minOrderCount": 3, "lastOrderWithinDays": 30, "status": "ACTIVE" }
+  rules       Json?
+
+  members CustomerGroupMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CustomerGroupMember {
+  group   CustomerGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId String
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String
+
+  createdAt DateTime @default(now())
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  HIDDEN
+}
+
+model Review {
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  // Links the review to a purchase so the UI can show a "verified purchase" badge.
+  orderId   String?
+
+  rating  Int // 1..5
+  title   String?
+  content String @db.Text
+  status  ReviewStatus @default(PENDING)
+
+  // Admin/store response to the review.
+  reply           String?   @db.Text
+  repliedAt       DateTime?
+  repliedByUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([userId])
   @@index([status])
 }

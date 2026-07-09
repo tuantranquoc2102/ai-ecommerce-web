@@ -28,6 +28,8 @@ import { BlockTemplatesModule } from './modules/block-templates/block-templates.
 import { CouponsModule } from './modules/coupons/coupons.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { CustomerGroupsModule } from './modules/customer-groups/customer-groups.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { HealthModule } from './modules/health/health.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
@@ -112,6 +114,8 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
     CouponsModule,
     PaymentsModule,
     OrdersModule,
+    CustomerGroupsModule,
+    ReviewsModule,
     SettingsModule,
     HealthModule,
   ],

@@ -14,6 +14,12 @@ export interface AdminUser {
   createdAt: string;
   updatedAt: string;
   userRoles: { role: { id: string; code: string; name: string } }[];
+  /** Admin-only internal annotation. Present on `GET /users/:id`. */
+  internalNote?: string | null;
+  /** Customer group memberships. Present on `GET /users/:id`. */
+  groupMemberships?: {
+    group: { id: string; name: string; color: string | null; type: string };
+  }[];
 }
 
 export interface ListUsers {
