@@ -26,6 +26,7 @@ import { MenusModule } from './modules/menus/menus.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { BlockTemplatesModule } from './modules/block-templates/block-templates.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
+import { PromotionsModule } from './modules/promotions/promotions.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { CustomerGroupsModule } from './modules/customer-groups/customer-groups.module';
@@ -112,6 +113,7 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
     BannersModule,
     BlockTemplatesModule,
     CouponsModule,
+    PromotionsModule,
     PaymentsModule,
     OrdersModule,
     CustomerGroupsModule,

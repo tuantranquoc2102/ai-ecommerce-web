@@ -103,6 +103,12 @@ const PERMISSIONS: PermSeed[] = [
   { code: 'review.read', name: 'List/view reviews', type: 'API', apiEndpoint: 'GET /api/v1/reviews' },
   { code: 'review.moderate', name: 'Moderate/reply to reviews', type: 'API', apiEndpoint: 'PATCH /api/v1/reviews/:id' },
 
+  // API: marketing
+  { code: 'coupon.read', name: 'List/view coupons', type: 'API', apiEndpoint: 'GET /api/v1/coupons' },
+  { code: 'coupon.write', name: 'Manage coupons', type: 'API', apiEndpoint: 'POST /api/v1/coupons' },
+  { code: 'promotion.read', name: 'List/view promotions', type: 'API', apiEndpoint: 'GET /api/v1/promotions' },
+  { code: 'promotion.write', name: 'Manage promotions', type: 'API', apiEndpoint: 'POST /api/v1/promotions' },
+
   // UI elements (rendered conditionally on the front-end)
   { code: 'element.user.delete_button', name: 'Show delete-user button', type: 'ELEMENT' },
   { code: 'element.order.refund_button', name: 'Show refund-order button', type: 'ELEMENT' },
@@ -134,6 +140,8 @@ const ROLES: { code: string; name: string; description: string; isSystem: boolea
       'setting.read', 'setting.write',
       'customer_group.read', 'customer_group.write',
       'review.read', 'review.moderate',
+      'coupon.read', 'coupon.write',
+      'promotion.read', 'promotion.write',
     ],
   },
   {

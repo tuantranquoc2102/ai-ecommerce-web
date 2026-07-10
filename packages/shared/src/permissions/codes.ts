@@ -52,6 +52,11 @@ export const PERM = {
   REVIEW_READ: 'review.read',
   REVIEW_MODERATE: 'review.moderate',
 
+  COUPON_READ: 'coupon.read',
+  COUPON_WRITE: 'coupon.write',
+  PROMOTION_READ: 'promotion.read',
+  PROMOTION_WRITE: 'promotion.write',
+
   SETTING_READ: 'setting.read',
   SETTING_WRITE: 'setting.write',
 } as const;

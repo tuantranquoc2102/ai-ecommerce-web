@@ -26,6 +26,7 @@ import { generateOrderNumber } from '../../common/order-number';
 import { ENV_TOKEN, type AppEnv } from '../../config/env';
 import { CouponsService } from '../coupons/coupons.service';
 import { PaymentsService } from '../payments/payments.service';
+import { PromotionsService } from '../promotions/promotions.service';
 import { OrderTokensService } from './order-tokens.service';
 import { computeTotals } from './order-totals';
 import { assertTransition } from './order-status';
@@ -54,6 +55,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly coupons: CouponsService,
+    private readonly promotions: PromotionsService,
     @Inject(forwardRef(() => PaymentsService))
     private readonly payments: PaymentsService,
     private readonly tokens: OrderTokensService,
@@ -154,6 +156,21 @@ export class OrdersService {
         return { product, variant, item, unitPrice, titleSnapshot };
       });
 
+      const promoMap = await this.promotions.resolveBestForProducts(
+        tx,
+        lines.map((l) => ({
+          productId: l.product.id,
+          amount: l.unitPrice,
+        })),
+      );
+      const pricedLines = lines.map((l) => {
+        const promo = promoMap.get(l.product.id);
+        return {
+          ...l,
+          unitPrice: promo ? new Prisma.Decimal(promo.finalPrice) : l.unitPrice,
+        };
+      });
+
       // Optional coupon.
       const coupon = input.couponCode
         ? await this.coupons.loadForApply(tx, input.couponCode)
@@ -166,7 +183,7 @@ export class OrdersService {
       }
 
       const totals = computeTotals(
-        lines.map((l) => ({ unitPrice: l.unitPrice, quantity: l.item.quantity })),
+        pricedLines.map((l) => ({ unitPrice: l.unitPrice, quantity: l.item.quantity })),
         coupon
           ? {
               type: coupon.type,
@@ -194,7 +211,7 @@ export class OrdersService {
       const created = await this.tryCreateOrder(tx, orderNumber, {
         user,
         input,
-        lines,
+        lines: pricedLines,
         totals,
         couponId: coupon?.id ?? null,
         paymentExpiresAt,
@@ -207,7 +224,7 @@ export class OrdersService {
           return this.tryCreateOrder(tx, orderNumber, {
             user,
             input,
-            lines,
+            lines: pricedLines,
             totals,
             couponId: coupon?.id ?? null,
             paymentExpiresAt,
