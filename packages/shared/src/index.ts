@@ -13,6 +13,7 @@ export * from './dto/review.dto';
 export * from './dto/coupon.dto';
 export * from './dto/promotion.dto';
 export * from './dto/payment.dto';
+export * from './dto/report.dto';
 export * from './dto/cms.dto';
 export * from './dto/settings.dto';
 export * from './dto/block-template.dto';
