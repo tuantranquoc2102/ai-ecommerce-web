@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  ActivePromotionInfo,
   CreateProductDto,
   ListProductsQuery,
   UpdateProductDto,
@@ -12,6 +13,7 @@ import type {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { toSlug } from '../../common/slug';
+import { PromotionsService } from '../promotions/promotions.service';
 
 type TxClient = Prisma.TransactionClient;
 
@@ -44,7 +46,10 @@ const productDetailInclude = {
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly promotions: PromotionsService,
+  ) {}
 
   async list(query: ListProductsQuery) {
     const tagIds = collectTagIds(query.tagId, query.tagIds);
@@ -109,7 +114,7 @@ export class ProductsService {
    */
   async findManyPublicByIds(ids: string[]) {
     if (ids.length === 0) return [];
-    return this.prisma.product.findMany({
+    const items = await this.prisma.product.findMany({
       where: {
         id: { in: ids },
         deletedAt: null,
@@ -120,6 +125,7 @@ export class ProductsService {
         productTags: { include: { tag: true } },
       },
     });
+    return this.applyActivePromotions(items);
   }
 
   /**
@@ -137,7 +143,16 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException({ code: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
     }
-    return product;
+    const [enriched] = await this.applyActivePromotions([product]);
+    return enriched;
+  }
+
+  async listPublic(query: ListProductsQuery) {
+    const result = await this.list({ ...query, status: 'ACTIVE' });
+    return {
+      ...result,
+      items: await this.applyActivePromotions(result.items),
+    };
   }
 
   async create(input: CreateProductDto) {
@@ -347,6 +362,27 @@ export class ProductsService {
     await this.prisma.product.update({
       where: { id },
       data: { deletedAt: new Date(), status: 'ARCHIVED' },
+    });
+  }
+
+  private async applyActivePromotions<T extends { id: string; basePrice: Prisma.Decimal; salePrice: Prisma.Decimal | null }>(
+    items: T[],
+  ): Promise<Array<T & { activePromotion: ActivePromotionInfo | null }>> {
+    if (items.length === 0) return [];
+    const priceBase = items.map((p) => ({
+      productId: p.id,
+      amount: p.salePrice ?? p.basePrice,
+    }));
+    const promoMap = await this.promotions.resolveBestForProducts(this.prisma, priceBase);
+
+    return items.map((p) => {
+      const promo = promoMap.get(p.id) ?? null;
+      if (!promo) return { ...p, activePromotion: null };
+      return {
+        ...p,
+        salePrice: new Prisma.Decimal(promo.finalPrice),
+        activePromotion: promo,
+      };
     });
   }
 

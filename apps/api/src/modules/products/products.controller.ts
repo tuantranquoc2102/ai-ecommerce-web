@@ -31,12 +31,6 @@ export class ProductsController {
     return this.products.list(query);
   }
 
-  @RequirePermission(PERM.PRODUCT_READ)
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.products.findById(id);
-  }
-
   /**
    * Public storefront lookup. Only ACTIVE, non-deleted products are returned
    * to anonymous visitors — anything else 404s so drafts/archives stay hidden.
@@ -54,7 +48,7 @@ export class ProductsController {
   @Public()
   @Get('public/list')
   publicList(@Query(new ZodValidationPipe(ListProductsQuery)) query: ListProductsQuery) {
-    return this.products.list({ ...query, status: 'ACTIVE' });
+    return this.products.listPublic(query);
   }
 
   /**
@@ -74,6 +68,12 @@ export class ProductsController {
       .slice(0, 50);
     if (ids.length === 0) return [];
     return this.products.findManyPublicByIds(ids);
+  }
+
+  @RequirePermission(PERM.PRODUCT_READ)
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.products.findById(id);
   }
 
   @RequirePermission(PERM.PRODUCT_CREATE)
