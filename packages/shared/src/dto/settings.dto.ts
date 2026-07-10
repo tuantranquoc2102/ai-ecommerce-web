@@ -179,3 +179,258 @@ export const DEFAULT_FOOTER_CONFIG: FooterConfig = {
     ],
   },
 };
+
+// ---------------------------------------------------------------------------
+// Payment gateway settings
+// ---------------------------------------------------------------------------
+
+const trimmed = (max: number) => z.string().trim().max(max);
+const optionalText = (max: number) =>
+  z.preprocess((v) => (v === '' || v == null ? undefined : v), trimmed(max).optional());
+
+export const PAYMENT_PROVIDER_KEYS = ['COD', 'MOMO', 'VNPAY', 'CREDIT_CARD'] as const;
+export const PaymentProviderKey = z.enum(PAYMENT_PROVIDER_KEYS);
+export type PaymentProviderKey = z.infer<typeof PaymentProviderKey>;
+
+export const PaymentProviderConfig = z.object({
+  key: PaymentProviderKey,
+  name: trimmed(80).min(1).default(''),
+  enabled: z.boolean().default(false),
+  sandbox: z.boolean().default(true),
+  merchantId: optionalText(160),
+  apiKey: optionalText(300),
+  secretKey: optionalText(300),
+  webhookUrl: optionalText(500),
+  description: optionalText(300),
+});
+export type PaymentProviderConfig = z.infer<typeof PaymentProviderConfig>;
+
+export const PaymentSettingsConfig = z.object({
+  currency: trimmed(12).min(1).default('VND'),
+  allowGuestCheckout: z.boolean().default(true),
+  providers: z.array(PaymentProviderConfig).min(1).max(20).default([]),
+});
+export type PaymentSettingsConfig = z.infer<typeof PaymentSettingsConfig>;
+
+export const UpdatePaymentSettingsDto = PaymentSettingsConfig;
+export type UpdatePaymentSettingsDto = z.infer<typeof UpdatePaymentSettingsDto>;
+
+export const DEFAULT_PAYMENT_SETTINGS: PaymentSettingsConfig = {
+  currency: 'VND',
+  allowGuestCheckout: true,
+  providers: [
+    {
+      key: 'COD',
+      name: 'Cash on Delivery',
+      enabled: true,
+      sandbox: true,
+      merchantId: undefined,
+      apiKey: undefined,
+      secretKey: undefined,
+      webhookUrl: undefined,
+      description: 'Thanh toan khi nhan hang.',
+    },
+    {
+      key: 'MOMO',
+      name: 'MoMo',
+      enabled: false,
+      sandbox: true,
+      merchantId: undefined,
+      apiKey: undefined,
+      secretKey: undefined,
+      webhookUrl: undefined,
+      description: undefined,
+    },
+    {
+      key: 'VNPAY',
+      name: 'VNPAY',
+      enabled: false,
+      sandbox: true,
+      merchantId: undefined,
+      apiKey: undefined,
+      secretKey: undefined,
+      webhookUrl: undefined,
+      description: undefined,
+    },
+    {
+      key: 'CREDIT_CARD',
+      name: 'Credit Card',
+      enabled: false,
+      sandbox: true,
+      merchantId: undefined,
+      apiKey: undefined,
+      secretKey: undefined,
+      webhookUrl: undefined,
+      description: undefined,
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Shipping settings
+// ---------------------------------------------------------------------------
+
+export const SHIPPING_PROVIDER_KEYS = [
+  'GHN',
+  'GHTK',
+  'VIETTEL_POST',
+  'VNPOST',
+  'MANUAL',
+] as const;
+export const ShippingProviderKey = z.enum(SHIPPING_PROVIDER_KEYS);
+export type ShippingProviderKey = z.infer<typeof ShippingProviderKey>;
+
+export const ShippingProviderConfig = z.object({
+  key: ShippingProviderKey,
+  name: trimmed(80).min(1).default(''),
+  enabled: z.boolean().default(false),
+  token: optionalText(300),
+  apiBaseUrl: optionalText(300),
+  shopId: optionalText(160),
+  pickupName: optionalText(120),
+  pickupPhone: optionalText(40),
+  pickupAddress: optionalText(300),
+  pickupWardCode: optionalText(80),
+  pickupDistrictCode: optionalText(80),
+  pickupProvinceCode: optionalText(80),
+  leadTimeWebhookUrl: optionalText(500),
+  notes: optionalText(400),
+});
+export type ShippingProviderConfig = z.infer<typeof ShippingProviderConfig>;
+
+export const ShippingSettingsConfig = z.object({
+  defaultProvider: ShippingProviderKey.default('MANUAL'),
+  freeShippingThreshold: optionalText(40),
+  flatRate: optionalText(40),
+  providers: z.array(ShippingProviderConfig).min(1).max(30).default([]),
+});
+export type ShippingSettingsConfig = z.infer<typeof ShippingSettingsConfig>;
+
+export const UpdateShippingSettingsDto = ShippingSettingsConfig;
+export type UpdateShippingSettingsDto = z.infer<typeof UpdateShippingSettingsDto>;
+
+export const DEFAULT_SHIPPING_SETTINGS: ShippingSettingsConfig = {
+  defaultProvider: 'MANUAL',
+  freeShippingThreshold: undefined,
+  flatRate: '30000',
+  providers: [
+    {
+      key: 'MANUAL',
+      name: 'Van chuyen thu cong',
+      enabled: true,
+      token: undefined,
+      apiBaseUrl: undefined,
+      shopId: undefined,
+      pickupName: undefined,
+      pickupPhone: undefined,
+      pickupAddress: undefined,
+      pickupWardCode: undefined,
+      pickupDistrictCode: undefined,
+      pickupProvinceCode: undefined,
+      leadTimeWebhookUrl: undefined,
+      notes: 'Dung khi chua ket noi API don vi van chuyen.',
+    },
+    {
+      key: 'GHN',
+      name: 'Giao Hang Nhanh (GHN)',
+      enabled: false,
+      token: undefined,
+      apiBaseUrl: undefined,
+      shopId: undefined,
+      pickupName: undefined,
+      pickupPhone: undefined,
+      pickupAddress: undefined,
+      pickupWardCode: undefined,
+      pickupDistrictCode: undefined,
+      pickupProvinceCode: undefined,
+      leadTimeWebhookUrl: undefined,
+      notes: undefined,
+    },
+    {
+      key: 'GHTK',
+      name: 'Giao Hang Tiet Kiem (GHTK)',
+      enabled: false,
+      token: undefined,
+      apiBaseUrl: undefined,
+      shopId: undefined,
+      pickupName: undefined,
+      pickupPhone: undefined,
+      pickupAddress: undefined,
+      pickupWardCode: undefined,
+      pickupDistrictCode: undefined,
+      pickupProvinceCode: undefined,
+      leadTimeWebhookUrl: undefined,
+      notes: undefined,
+    },
+    {
+      key: 'VIETTEL_POST',
+      name: 'Viettel Post',
+      enabled: false,
+      token: undefined,
+      apiBaseUrl: undefined,
+      shopId: undefined,
+      pickupName: undefined,
+      pickupPhone: undefined,
+      pickupAddress: undefined,
+      pickupWardCode: undefined,
+      pickupDistrictCode: undefined,
+      pickupProvinceCode: undefined,
+      leadTimeWebhookUrl: undefined,
+      notes: undefined,
+    },
+    {
+      key: 'VNPOST',
+      name: 'VNPost',
+      enabled: false,
+      token: undefined,
+      apiBaseUrl: undefined,
+      shopId: undefined,
+      pickupName: undefined,
+      pickupPhone: undefined,
+      pickupAddress: undefined,
+      pickupWardCode: undefined,
+      pickupDistrictCode: undefined,
+      pickupProvinceCode: undefined,
+      leadTimeWebhookUrl: undefined,
+      notes: undefined,
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// General store settings
+// ---------------------------------------------------------------------------
+
+export const GeneralSettingsConfig = z.object({
+  storeName: trimmed(120).min(1).default('Ecom'),
+  legalName: optionalText(160),
+  taxCode: optionalText(80),
+  supportEmail: z.string().trim().email().max(160).default('hello@ecom.local'),
+  supportPhone: optionalText(40),
+  address: optionalText(300),
+  timezone: trimmed(80).default('Asia/Ho_Chi_Minh'),
+  defaultLanguage: trimmed(20).default('vi'),
+  defaultCurrency: trimmed(12).default('VND'),
+  maintenanceMode: z.boolean().default(false),
+  allowRegistration: z.boolean().default(true),
+  orderAutoConfirmMinutes: z.coerce.number().int().min(0).max(10080).default(0),
+});
+export type GeneralSettingsConfig = z.infer<typeof GeneralSettingsConfig>;
+
+export const UpdateGeneralSettingsDto = GeneralSettingsConfig;
+export type UpdateGeneralSettingsDto = z.infer<typeof UpdateGeneralSettingsDto>;
+
+export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsConfig = {
+  storeName: 'Ecom',
+  legalName: undefined,
+  taxCode: undefined,
+  supportEmail: 'hello@ecom.local',
+  supportPhone: undefined,
+  address: undefined,
+  timezone: 'Asia/Ho_Chi_Minh',
+  defaultLanguage: 'vi',
+  defaultCurrency: 'VND',
+  maintenanceMode: false,
+  allowRegistration: true,
+  orderAutoConfirmMinutes: 0,
+};
