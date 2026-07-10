@@ -96,7 +96,10 @@ export async function apiFetch<T>(
   // For multipart/FormData bodies, let the browser set Content-Type with its
   // generated boundary. Otherwise default to JSON.
   const isFormData = typeof FormData !== 'undefined' && rest.body instanceof FormData;
-  if (!isFormData && !headers.has('content-type')) {
+  // Only advertise a JSON content-type when we actually send a body. A bodyless
+  // POST (e.g. an action trigger) with `content-type: application/json` makes
+  // Fastify reject the request ("Body cannot be empty…").
+  if (!isFormData && rest.body != null && !headers.has('content-type')) {
     headers.set('content-type', 'application/json');
   }
 
