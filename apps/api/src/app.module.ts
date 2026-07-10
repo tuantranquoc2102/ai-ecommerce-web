@@ -32,6 +32,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { CustomerGroupsModule } from './modules/customer-groups/customer-groups.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { HealthModule } from './modules/health/health.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './modules/authz/permissions.guard';
@@ -119,6 +120,7 @@ import { PermissionsGuard } from './modules/authz/permissions.guard';
     CustomerGroupsModule,
     ReviewsModule,
     SettingsModule,
+    ReportsModule,
     HealthModule,
   ],
   providers: [
